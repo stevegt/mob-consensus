@@ -12,7 +12,8 @@ current_branch=$(git rev-parse --abbrev-ref HEAD)
 
 msg=/tmp/mob-consensus.msg
 
-printf "mob-consensus merge from $other_branch onto $current_branch\n\n" > $msg
+# printf "mob-consensus merge from $other_branch onto $current_branch\n\n" > $msg
+printf "\n\n" > $msg
 
 git log ..$other_branch --pretty=format:"Co-authored-by: %an <%ae>" \
     | grep -v $(git config --get user.email) \
