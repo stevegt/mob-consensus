@@ -22,18 +22,23 @@ then
     echo
 
     twig=$(basename $current_branch)
-    for b in $(git branch -a | tr '*' ' ' | egrep "/$twig$" | egrep -v "^$current_branch$")
+    for b in $(git branch -a | tr -d '*' | egrep "/$twig$")
     do 
+        if [ "$b" == "$current_branch" ]
+        then
+            continue
+        fi
         ahead=$(git diff --shortstat ...${b})
         behind=$(git diff --shortstat ${b}...)
         if [ -n "$ahead" ]
         then
             printf "%40s is ahead:\n" $b 
             git diff --stat ...${b} 
-        fi
-        if [ -n "$behind" ]
+        elif [ -n "$behind" ]
         then
             printf "%40s is behind: %s\n" $b "$behind"
+        else
+            printf "%40s is synced\n" $b 
         fi
 
         # also see https://git.seveas.net/previewing-a-merge-result.html for a
