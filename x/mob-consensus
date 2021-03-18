@@ -1,11 +1,18 @@
 #!/bin/bash -e
 
+unset force
+if [ "$1" == "-F" ]
+then
+    force=y
+    shift
+fi
+
 other_branch=$1
 
 repo_root=$(git rev-parse --show-toplevel)
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 
-if ! echo $current_branch | egrep -q "^$USER/"
+if [ -z "$force" ] && ! echo $current_branch | egrep -q "^$USER/"
 then
     echo "you aren't on a '$USER/' branch"
     exit 1
