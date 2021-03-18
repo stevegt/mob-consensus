@@ -65,7 +65,7 @@ cp $msg $repo_root/.git/MERGE_MSG
 # review all changes
 git difftool -t vimdiff HEAD
 
-if ! git commit -F $msg
+if ! git commit -e -F $msg
 then
     set +x
     echo "don't forget to push"
