@@ -5,7 +5,7 @@ current_branch=$(git rev-parse --abbrev-ref HEAD)
 twig=$(basename $current_branch)
 
 usage() {
-    echo "Usage: $0 [-F] [-b BASE_BRANCH] [OTHER_BRANCH]
+    echo "Usage: $0 [-F] [-n] [-b BASE_BRANCH] [OTHER_BRANCH]
 
     With no arguments, compare $current_branch with other branches named "'*'"/$twig.
 
@@ -13,6 +13,7 @@ usage() {
     
     -F force run even if not on a $USER/ branch
     -b create new branch named $USER/... based on BASE_BRANCH 
+    -n no automatic push after commit
     "
     exit 1
 }
@@ -37,7 +38,8 @@ ck_user() {
 
 unset force
 unset base_branch
-while getopts Fb: opt 
+unset nopush
+while getopts Fnb: opt 
 do
     case $opt in
         F)
@@ -46,6 +48,9 @@ do
         b)
             force=y
             base_branch=$OPTARG
+            ;;
+        n)
+            nopush=y
             ;;
         *)
             echo
@@ -140,7 +145,14 @@ else
         echo "don't forget to push"
         exit 1
     fi
-    git push
+
+    if [ -n "$nopush" ]
+    then
+        set +x
+        echo "skipping automatic push -- don't forget to push later"
+    else
+        git push
+    fi
 fi
 
 
