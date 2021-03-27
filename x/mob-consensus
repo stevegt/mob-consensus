@@ -28,10 +28,12 @@ ck_clean() {
         then
             exit 1
         fi
-        echo "hit ^C to cancel or hit <enter> to continue with a diff and commit"
-        read
-        git diff
+        git diff HEAD
         git commit -a
+        if [ -z "$nopush" ]
+        then
+            git push
+        fi
     fi
 }
 
