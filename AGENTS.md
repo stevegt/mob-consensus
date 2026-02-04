@@ -1,23 +1,22 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `x/` holds experimental prototypes. The current tool lives at `x/mob-consensus`.
-- If you add Go code, keep packages at the module root or under `x/` (avoid `internal/` and `pkg/`).
+- The Go CLI lives at the module root (`main.go`) (preferred).
+- `x/` holds experimental prototypes and legacy helpers; `x/mob-consensus` is the original Bash implementation kept for reference.
+- Keep packages at the module root or under `x/` (avoid `internal/` and `pkg/`).
 - Do not commit local state (e.g., `.grok/`, `.grok`) or generated binaries; keep these ignored locally.
 
 ## Build, Test, and Development Commands
-- `./x/mob-consensus -h`: show help and flags.
-- `./x/mob-consensus`: compare the current branch with related branches matching `*/<twig>` (where `<twig>` is the basename of the current branch).
-- `./x/mob-consensus OTHER_BRANCH`: merge `OTHER_BRANCH` onto the current branch with a prepared commit message and co-author lines.
-- `./x/mob-consensus -b <base>`: create `$USER/<twig>` from `<base>` and push upstream.
-- `./x/mob-consensus -c`: commit existing uncommitted changes before proceeding.
-- `./x/mob-consensus -F`: force run even if not on a `$USER/` branch.
+- `go test ./...`: run unit tests.
+- `go run . -h`: run locally (requires Go 1.24.0+).
+- `go install github.com/stevegt/mob-consensus@latest`: install/upgrade the CLI.
+- `mob-consensus -h`: show help and flags.
 
-Notes: the script runs `git fetch`, uses `git mergetool`/`git difftool` (defaulting to `vimdiff`), and pushes after commits unless `-n` is set.
+Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaulting to `vimdiff`), and pushes after commits unless `-n` is set.
 
 ## Coding Style & Naming Conventions
 - Bash: keep changes small and readable; validate with `bash -n x/mob-consensus` (and `shellcheck x/mob-consensus` if available).
-- Go (if added): run `gofmt`; keep package names short and lower-case.
+- Go: run `gofmt`; keep package names short and lower-case. Minimum supported Go is 1.24.0 (see `go.mod`).
 
 ## Testing Guidelines
 - Prefer deterministic tests using Go’s standard `testing` package when adding Go code.

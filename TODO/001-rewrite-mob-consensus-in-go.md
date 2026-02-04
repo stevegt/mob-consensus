@@ -4,14 +4,18 @@ Goal: replace `x/mob-consensus` (Bash) with a small, testable Go CLI while keepi
 
 Migrated from the coordination repo (formerly “TODO 004 - Rewrite mob-consensus in Go”).
 
-- [ ] 001.1 Decide how it’s installed and upgraded (e.g., `go install ...@latest`) and where the Go entrypoint lives (e.g., `cmd/mob-consensus`).
-- [ ] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `-b BASE_BRANCH`, `-c` commit dirty tree, `-n` no-push, `-F` force, `[OTHER_BRANCH]` merge mode.
-- [ ] 001.3 Implement “related branches” discovery (branches ending in `/$twig`) and ahead/behind shortstat reporting.
-- [ ] 001.4 Implement branch creation from local or remote bases (including setting upstream).
-- [ ] 001.5 Implement merge flow: generate commit message with `Co-authored-by:` lines, run `git merge --no-commit --no-ff`, then launch mergetool/difftool.
+- [x] 001.1 Decide how it’s installed and upgraded (e.g., `go install ...@latest`) and where the Go entrypoint lives (e.g., `cmd/mob-consensus`).
+- [x] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `-b BASE_BRANCH`, `-c` commit dirty tree, `-n` no-push, `-F` force, `[OTHER_BRANCH]` merge mode.
+- [x] 001.3 Implement “related branches” discovery (branches ending in `/$twig`) and ahead/behind shortstat reporting.
+- [x] 001.4 Implement branch creation from local or remote bases (including setting upstream).
+- [x] 001.5 Implement merge flow: generate commit message with `Co-authored-by:` lines, run `git merge --no-commit --no-ff`, then launch mergetool/difftool.
 - [ ] 001.6 Add config overrides for tools (`difftool`, `mergetool`, editor) and ensure non-interactive failure modes are clear.
-- [ ] 001.7 Add deterministic tests around parsing and branch selection logic (shelling out can be integration-tested later).
+- [x] 001.7 Add deterministic tests around parsing and branch selection logic (shelling out can be integration-tested later).
 - [ ] 001.8 Plan the migration: keep the Bash script as a thin wrapper (or deprecate) once the Go tool is proven.
+
+Decisions:
+- Go entrypoint: module root (`main.go`)
+- Install/upgrade: `go install github.com/stevegt/mob-consensus@latest`
 
 ## How `mob-consensus` Works (Today)
 `mob-consensus` is a Git workflow helper optimized for mob/pair sessions where collaborators each work on their own branch, but want rapid, repeated convergence without the overhead of PRs.

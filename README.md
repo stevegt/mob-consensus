@@ -1,0 +1,25 @@
+# mob-consensus
+
+`mob-consensus` is a Git workflow helper optimized for mob/pair sessions where each collaborator works on their own `USER/<twig>` branch and repeatedly merges to converge.
+
+## Install / Upgrade
+
+- Install latest: `go install github.com/stevegt/mob-consensus@latest`
+- Install a version: `go install github.com/stevegt/mob-consensus@vX.Y.Z`
+
+Minimum supported Go is 1.24.0.
+
+## Usage
+
+```
+mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+```
+
+- No args: `git fetch`, then list related branches ending in `/<twig>` and show whether each is ahead/behind/synced.
+- `OTHER_BRANCH`: perform a manual merge of `OTHER_BRANCH` onto the current branch, populate `MERGE_MSG` with `Co-authored-by:` lines, open mergetool/difftool, then commit and (optionally) push.
+- `-b BASE_BRANCH`: create `$USER/<twig>` from `BASE_BRANCH` and push it upstream.
+
+Flags:
+- `-F`: force run even if not on a `$USER/` branch
+- `-c`: commit existing uncommitted changes (required for merge/branch-creation if the tree is dirty)
+- `-n`: no automatic push after commits
