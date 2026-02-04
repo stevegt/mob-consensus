@@ -12,10 +12,48 @@ Migrated from the coordination repo (formerly “TODO 004 - Rewrite mob-consensu
 - [ ] 001.6 Add config overrides for tools (`difftool`, `mergetool`, editor) and ensure non-interactive failure modes are clear.
 - [x] 001.7 Add deterministic tests around parsing and branch selection logic (shelling out can be integration-tested later).
 - [ ] 001.8 Plan the migration: keep the Bash script as a thin wrapper (or deprecate) once the Go tool is proven.
+- [ ] 001.9 Define a reusable library boundary (so Storm can import the “engine” bits without adopting the CLI UX).
 
 Decisions:
 - Go entrypoint: module root (`main.go`)
 - Install/upgrade: `go install github.com/stevegt/mob-consensus@latest`
+
+## Library vs CLI Layout (for Storm reuse)
+We may want to reuse parts of `mob-consensus` inside `~/lab/grokker/x/storm` (notably for the “consensus-merge (mob-consensus style)” and `Co-authored-by:` attribution mentioned in Storm TODOs like `TODO/025-promisegrid-node.md` and `TODO/026-planning-group-workspace-mvp.md`, and to align with the diff/approve/apply/commit workflow in `TODO/014-change-review-gate.md`).
+
+### Pros of “library + cmd/”
+- **Reuse without UX coupling**: Storm can call the same core logic while presenting it via web/daemon flows.
+- **Smaller drift surface**: avoid copy/paste reimplementations of twig/branch discovery and `Co-authored-by:` generation.
+- **Better testing**: keep deterministic logic in a package with unit tests; keep the CLI as a thin wrapper.
+
+### Cons / tradeoffs
+- **API stability pressure**: without `internal/`/`pkg/`, exported identifiers become de-facto public API.
+- **Refactor overhead**: interactive steps (difftool/mergetool/editor) need to be pushed out of the library into the CLI.
+- **Versioning/deps**: Storm will depend on this module; local dev may want `go.work` or a `replace` during iteration.
+
+### Suggested minimal package boundary
+Create a small package (e.g., `consensus/`) that is **non-interactive** and returns **structured data**.
+
+Library responsibilities (reusable by Storm):
+- Parse/derive `twig` and filter “related branches” (branches ending in `/<twig>`).
+- Compute ahead/behind status using Git primitives (or by shelling out behind an interface).
+- Generate `Co-authored-by:` trailers from a ref-range (`..OTHER_BRANCH`) with optional exclusions (current user email).
+- Format a merge commit message header + trailers (but do not write `MERGE_MSG`).
+
+CLI-only responsibilities (stay out of the library):
+- Running `git mergetool` / `git difftool` and other interactive tooling.
+- Writing `.git/MERGE_MSG` and doing `git commit -e ...`.
+- Any “print-oriented” UX (blank lines, headers, alignment) except where it’s purely formatting output for the CLI.
+
+Implementation sketch:
+- `consensus` exports a narrow API like:
+  - `Twig(branch string) string`
+  - `RelatedBranches(branchAOutput, twig string) []string`
+  - `CoAuthorLines(gitLogOutput, excludeEmail string) []string`
+  - Optionally a `Runner` that takes a `Git` interface (`Output(ctx, args...)`, `Run(ctx, args...)`) so Storm can swap execution/mocking.
+
+Constraints:
+- Do not modify `x/mob-consensus` (keep as legacy reference/behavior oracle).
 
 ## How `mob-consensus` Works (Today)
 `mob-consensus` is a Git workflow helper optimized for mob/pair sessions where collaborators each work on their own branch, but want rapid, repeated convergence without the overhead of PRs.
