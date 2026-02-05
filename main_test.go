@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -66,5 +67,43 @@ func TestCoAuthorLines(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("coAuthorLines()=%q, want %q", got, want)
+	}
+}
+
+func TestDiffStatusLine(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		branch string
+		ahead  string
+		behind string
+		want   string
+	}{
+		{
+			branch: "alice/twig",
+			ahead:  "AHEAD",
+			behind: "BEHIND",
+			want:   fmt.Sprintf("%40s has diverged: ahead: %s; behind: %s", "alice/twig", "AHEAD", "BEHIND"),
+		},
+		{
+			branch: "alice/twig",
+			ahead:  "AHEAD",
+			want:   fmt.Sprintf("%40s is ahead: %s", "alice/twig", "AHEAD"),
+		},
+		{
+			branch: "alice/twig",
+			behind: "BEHIND",
+			want:   fmt.Sprintf("%40s is behind: %s", "alice/twig", "BEHIND"),
+		},
+		{
+			branch: "alice/twig",
+			want:   fmt.Sprintf("%40s is synced", "alice/twig"),
+		},
+	}
+	for _, tt := range tests {
+		got := diffStatusLine(tt.branch, tt.ahead, tt.behind)
+		if got != tt.want {
+			t.Fatalf("diffStatusLine(%q,%q,%q)=%q, want %q", tt.branch, tt.ahead, tt.behind, got, tt.want)
+		}
 	}
 }

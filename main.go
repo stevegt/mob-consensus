@@ -149,12 +149,6 @@ func runCreateBranch(ctx context.Context, opts options, user string) error {
 	twig := twigFromBranch(opts.baseBranch)
 	newBranch := user + "/" + twig
 	baseBranch := opts.baseBranch
-	if strings.Contains(baseBranch, "remotes/") {
-		if err := gitRun(ctx, "checkout", "-b", twig, baseBranch); err != nil {
-			return err
-		}
-		baseBranch = twig
-	}
 	if err := gitRun(ctx, "checkout", "-b", newBranch, baseBranch); err != nil {
 		return err
 	}
@@ -194,16 +188,22 @@ func runDiscovery(ctx context.Context, opts options, currentBranch string, stdou
 		ahead = strings.TrimSpace(ahead)
 		behind = strings.TrimSpace(behind)
 
-		switch {
-		case ahead != "":
-			fmt.Fprintf(stdout, "%40s is ahead: %s\n", b, ahead)
-		case behind != "":
-			fmt.Fprintf(stdout, "%40s is behind: %s\n", b, behind)
-		default:
-			fmt.Fprintf(stdout, "%40s is synced\n", b)
-		}
+		fmt.Fprintln(stdout, diffStatusLine(b, ahead, behind))
 	}
 	return nil
+}
+
+func diffStatusLine(branch, ahead, behind string) string {
+	switch {
+	case ahead != "" && behind != "":
+		return fmt.Sprintf("%40s has diverged: ahead: %s; behind: %s", branch, ahead, behind)
+	case ahead != "":
+		return fmt.Sprintf("%40s is ahead: %s", branch, ahead)
+	case behind != "":
+		return fmt.Sprintf("%40s is behind: %s", branch, behind)
+	default:
+		return fmt.Sprintf("%40s is synced", branch)
+	}
 }
 
 func runMerge(ctx context.Context, opts options, currentBranch string, stdout io.Writer) error {
@@ -211,15 +211,60 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return err
 	}
 
-	msgPath := filepath.Join(os.TempDir(), "mob-consensus.msg")
-	if err := writeMergeMessage(ctx, msgPath, opts.otherBranch, currentBranch); err != nil {
+	mergeMsg, err := buildMergeMessage(ctx, opts.otherBranch, currentBranch)
+	if err != nil {
 		return err
 	}
 
-	if err := gitRun(ctx, "merge", "--no-commit", "--no-ff", opts.otherBranch); err != nil {
+	gitDir, err := gitOutputTrimmed(ctx, "rev-parse", "--git-dir")
+	if err != nil {
+		return err
+	}
+	gitDir, err = filepath.Abs(gitDir)
+	if err != nil {
+		return err
+	}
+	msgFile, err := os.CreateTemp(gitDir, "mob-consensus-*.msg")
+	if err != nil {
+		return err
+	}
+	msgPath := msgFile.Name()
+	defer os.Remove(msgPath)
+	if _, err := msgFile.Write(mergeMsg); err != nil {
+		_ = msgFile.Close()
+		return err
+	}
+	if err := msgFile.Close(); err != nil {
+		return err
+	}
+
+	mergeHeadPath, err := gitOutputTrimmed(ctx, "rev-parse", "--git-path", "MERGE_HEAD")
+	if err != nil {
+		return err
+	}
+	mergeHeadPath, err = filepath.Abs(mergeHeadPath)
+	if err != nil {
+		return err
+	}
+
+	mergeErr := gitRun(ctx, "merge", "--no-commit", "--no-ff", opts.otherBranch)
+	if mergeErr != nil {
+		if _, err := os.Stat(mergeHeadPath); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return mergeErr
+			}
+			return err
+		}
 		if err := gitRun(ctx, "mergetool", "-t", "vimdiff"); err != nil {
 			return err
 		}
+	}
+
+	if _, err := os.Stat(mergeHeadPath); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
 	}
 
 	mergeMsgPath, err := gitOutputTrimmed(ctx, "rev-parse", "--git-path", "MERGE_MSG")
@@ -227,10 +272,6 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return err
 	}
 	mergeMsgPath, err = filepath.Abs(mergeMsgPath)
-	if err != nil {
-		return err
-	}
-	mergeMsg, err := os.ReadFile(msgPath)
 	if err != nil {
 		return err
 	}
@@ -305,7 +346,7 @@ func relatedBranches(branchAOutput, twig string) []string {
 	return out
 }
 
-func writeMergeMessage(ctx context.Context, msgPath, otherBranch, currentBranch string) error {
+func buildMergeMessage(ctx context.Context, otherBranch, currentBranch string) ([]byte, error) {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "mob-consensus merge from %s onto %s\n\n", otherBranch, currentBranch)
 
@@ -315,7 +356,7 @@ func writeMergeMessage(ctx context.Context, msgPath, otherBranch, currentBranch 
 	}
 	logOut, err := gitOutput(ctx, "log", ".."+otherBranch, "--pretty=format:Co-authored-by: %an <%ae>")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	coauthors := coAuthorLines(logOut, userEmail)
@@ -324,7 +365,7 @@ func writeMergeMessage(ctx context.Context, msgPath, otherBranch, currentBranch 
 		buf.WriteString("\n")
 	}
 
-	return os.WriteFile(msgPath, []byte(buf.String()), 0o644)
+	return []byte(buf.String()), nil
 }
 
 func coAuthorLines(gitLogOutput, excludeEmail string) []string {
