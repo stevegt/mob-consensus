@@ -62,9 +62,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	user := os.Getenv("USER")
-	if user == "" {
-		return errors.New("USER is not set")
+	user, err := branchUserFromEmail(ctx)
+	if err != nil {
+		return err
 	}
 
 	if opts.baseBranch != "" {
@@ -101,8 +101,8 @@ func parseArgs(args []string) (options, bool, error) {
 	fs.SetOutput(io.Discard)
 	help := fs.Bool("h", false, "show help")
 	helpLong := fs.Bool("help", false, "show help")
-	fs.BoolVar(&opts.force, "F", false, "force run even if not on a $USER/ branch")
-	fs.StringVar(&opts.baseBranch, "b", "", "create new $USER/<twig> branch based on base branch")
+	fs.BoolVar(&opts.force, "F", false, "force run even if not on a <user>/ branch")
+	fs.StringVar(&opts.baseBranch, "b", "", "create new <user>/<twig> branch based on base branch")
 	fs.BoolVar(&opts.noPush, "n", false, "no automatic push after commits")
 	fs.BoolVar(&opts.commitDirty, "c", false, "commit existing uncommitted changes")
 
@@ -130,9 +130,9 @@ func printUsage(ctx context.Context, w io.Writer) error {
 		exampleTwig = twig
 	}
 
-	user := os.Getenv("USER")
-	if user == "" {
-		user = "$USER"
+	user := "alice"
+	if u, err := branchUserFromEmail(ctx); err == nil && u != "" {
+		user = u
 	}
 
 	_, _ = fmt.Fprintln(w, "Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]")
@@ -143,6 +143,7 @@ func printUsage(ctx context.Context, w io.Writer) error {
 	_, _ = fmt.Fprintln(w, "")
 	_, _ = fmt.Fprintln(w, "Branch convention:")
 	_, _ = fmt.Fprintf(w, "  Each collaborator works on <user>/<twig> branches (e.g., %s/%s).\n", user, exampleTwig)
+	_, _ = fmt.Fprintln(w, "  The <user> is derived from `git config user.email` (the part left of '@').")
 	_, _ = fmt.Fprintln(w, "  The <twig> is the branch basename (everything after the final '/').")
 
 	_, _ = fmt.Fprintln(w, "")
@@ -187,6 +188,30 @@ func printUsage(ctx context.Context, w io.Writer) error {
 	_, _ = fmt.Fprintln(w, "  -n no automatic push after commit")
 	_, _ = fmt.Fprintln(w, "  -c commit existing uncommitted changes")
 	return nil
+}
+
+func branchUserFromEmail(ctx context.Context) (string, error) {
+	email, err := gitOutputTrimmed(ctx, "config", "--get", "user.email")
+	if err != nil || strings.TrimSpace(email) == "" {
+		return "", errors.New("mob-consensus: git user.email is not set (hint: git config --local user.email alice@example.com)")
+	}
+
+	email = strings.TrimSpace(email)
+	user := email
+	if at := strings.IndexByte(email, '@'); at >= 0 {
+		user = email[:at]
+	}
+	user = strings.TrimSpace(user)
+	if user == "" {
+		return "", fmt.Errorf("mob-consensus: could not derive a username from git user.email=%q", email)
+	}
+
+	probe := user + "/probe"
+	if _, err := gitOutput(ctx, "check-ref-format", "--branch", probe); err != nil {
+		return "", fmt.Errorf("mob-consensus: derived username %q (from git user.email=%q) produces an invalid branch name", user, email)
+	}
+
+	return user, nil
 }
 
 func requireUserBranch(force bool, user, currentBranch string) error {
