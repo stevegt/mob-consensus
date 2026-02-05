@@ -114,20 +114,56 @@ func parseArgs(args []string) (options, bool, error) {
 func printUsage(ctx context.Context, w io.Writer) error {
 	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
-		currentBranch = "CURRENT_BRANCH"
+		currentBranch = ""
 	}
-	twig := twigFromBranch(currentBranch)
+	twig := "twig"
+	if currentBranch != "" {
+		twig = twigFromBranch(currentBranch)
+	}
+
+	user := os.Getenv("USER")
+	if user == "" {
+		user = "$USER"
+	}
+
 	_, _ = fmt.Fprintf(w, `Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
 
-With no arguments, compare %s with other branches named */%s.
+Branch convention:
+  Work on %s/<twig> branches (e.g., %s/%s).
+  The <twig> is the branch basename (everything after the final '/').
 
-If OTHER_BRANCH is given, do a manual merge of OTHER_BRANCH into %s.
+Getting started (first group member):
+  1) Pick a twig name (e.g., %s).
+  2) Create/push the shared base branch:
+       git switch -c %s origin/main
+       git push -u origin %s
+  3) Create your personal branch:
+       mob-consensus -b origin/%s
 
--F force run even if not on a $USER/ branch
--b create new branch named $USER/%s based on BASE_BRANCH
--n no automatic push after commit
--c commit existing uncommitted changes
-`, currentBranch, twig, currentBranch, twig)
+Getting started (next group members):
+  1) Create your personal branch:
+       mob-consensus -b origin/%s
+  2) Work/commit/push on %s/%s as usual.
+  3) See who's ahead/behind/diverged:
+       mob-consensus
+  4) Merge a teammate branch when ready:
+       mob-consensus alice/%s
+
+Commands:
+  (no args)     Fetch, then list related branches ending in */%s.
+  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
+  -b BASE       Create %s/%s from BASE and push upstream.
+
+Notes:
+  - For discovery/merge, you must be on a %s/ branch (use -F to override).
+  - If your working tree is dirty, use -c to commit it first, or clean it manually.
+
+Flags:
+  -F force run even if not on a %s/ branch
+  -b create new branch named %s/<twig> based on BASE_BRANCH
+  -n no automatic push after commit
+  -c commit existing uncommitted changes
+`, user, user, twig, twig, twig, twig, twig, twig, twig, user, twig, twig, twig, user, twig, user, twig, user, twig, user, user, user)
 	return nil
 }
 
