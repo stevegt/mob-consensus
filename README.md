@@ -15,9 +15,9 @@ Minimum supported Go is 1.24.0.
 mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
 ```
 
-- No args: `git fetch`, then list related branches ending in `/<twig>` and show whether each is ahead/behind/synced.
+- No args: `git fetch`, then list related branches ending in `/<twig>` and show whether each is ahead/behind/diverged/synced.
 - `OTHER_BRANCH`: perform a manual merge of `OTHER_BRANCH` onto the current branch, populate `MERGE_MSG` with `Co-authored-by:` lines, open mergetool/difftool, then commit and (optionally) push.
-- `-b BASE_BRANCH`: create `$USER/<twig>` from `BASE_BRANCH` and push it upstream.
+- `-b BASE_BRANCH`: create `$USER/<twig>` from `BASE_BRANCH` and switch to it (does not push; it prints a suggested `git push -u ...`).
 
 Flags:
 - `-F`: force run even if not on a `$USER/` branch

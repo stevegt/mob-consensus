@@ -85,9 +85,9 @@ Constraints:
 
 ## Usage Flow (Typical Mob Session)
 1. Each collaborator creates their own branch for the same twig (from a shared base):
-   - Example: `mob-consensus -b origin/feature-x` → creates `$USER/feature-x` and pushes it.
+   - Example: `mob-consensus -b feature-x` → creates `$USER/feature-x` and prints a suggested `git push -u ...`.
 2. Collaborators work normally (edit/commit/push on their own `$USER/<twig>` branches).
-3. Periodically, anyone runs `mob-consensus` (no args) to see which sibling branches are ahead/behind.
+3. Periodically, anyone runs `mob-consensus` (no args) to see which sibling branches are ahead/behind/diverged.
 4. When it’s time to converge, pick a sibling branch and merge it into the current branch:
    - Example: `mob-consensus jj/feature-x`
    - Resolve conflicts (mergetool), review changes (difftool), commit (with co-authors), push (unless `-n`).

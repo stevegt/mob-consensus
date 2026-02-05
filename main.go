@@ -77,17 +77,21 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		}
 	}
 
-	if err := gitRun(ctx, "fetch"); err != nil {
-		return err
-	}
-
 	switch {
 	case opts.baseBranch != "":
-		return runCreateBranch(ctx, opts, user)
+		return runCreateBranch(ctx, opts, user, stdout)
 	case opts.otherBranch == "":
+		bestEffortFetch(ctx, stderr)
 		return runDiscovery(ctx, opts, currentBranch, stdout)
 	default:
+		bestEffortFetch(ctx, stderr)
 		return runMerge(ctx, opts, currentBranch, stdout)
+	}
+}
+
+func bestEffortFetch(ctx context.Context, stderr io.Writer) {
+	if err := gitRun(ctx, "fetch"); err != nil {
+		fmt.Fprintln(stderr, "mob-consensus: warning: git fetch failed; continuing with local refs")
 	}
 }
 
@@ -136,44 +140,52 @@ func printUsage(ctx context.Context, w io.Writer) error {
 		_, _ = fmt.Fprintf(w, "\nCurrent branch: %s (twig: %s)\n", currentBranch, twig)
 	}
 
-	_, _ = fmt.Fprintf(w, `
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Branch convention:")
+	_, _ = fmt.Fprintf(w, "  Each collaborator works on <user>/<twig> branches (e.g., %s/%s).\n", user, exampleTwig)
+	_, _ = fmt.Fprintln(w, "  The <twig> is the branch basename (everything after the final '/').")
 
-Branch convention:
-  Work on %s/<twig> branches (e.g., alice/%s).
-  The <twig> is the branch basename (everything after the final '/').
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Getting started (first group member):")
+	_, _ = fmt.Fprintln(w, "  1) Starting from any base branch (e.g., main), create the shared twig branch:")
+	_, _ = fmt.Fprintf(w, "       git switch -c %s\n", exampleTwig)
+	_, _ = fmt.Fprintln(w, "  2) Create your personal branch from that local twig:")
+	_, _ = fmt.Fprintf(w, "       mob-consensus -b %s\n", exampleTwig)
+	_, _ = fmt.Fprintln(w, "  3) Push your personal branch (pick a remote from `git remote -v`):")
+	_, _ = fmt.Fprintf(w, "       git push -u <remote> %s/%s\n", user, exampleTwig)
+	_, _ = fmt.Fprintln(w, "     (Optionally also push the shared twig: `git push -u <remote> <twig>`.)")
 
-Getting started (first group member):
-  1) Pick a twig name (e.g., %s).
-  2) Create/push the shared base branch:
-       git switch -c %s origin/main
-       git push -u origin %s
-  3) Create your personal branch:
-       mob-consensus -b origin/%s
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Getting started (next group members):")
+	_, _ = fmt.Fprintln(w, "  1) Get the shared twig branch locally (example uses <remote>):")
+	_, _ = fmt.Fprintln(w, "       git fetch <remote>")
+	_, _ = fmt.Fprintf(w, "       git switch -c %s <remote>/%s\n", exampleTwig, exampleTwig)
+	_, _ = fmt.Fprintln(w, "  2) Create your personal branch:")
+	_, _ = fmt.Fprintf(w, "       mob-consensus -b %s\n", exampleTwig)
+	_, _ = fmt.Fprintln(w, "  3) Push your personal branch:")
+	_, _ = fmt.Fprintf(w, "       git push -u <remote> %s/%s\n", user, exampleTwig)
+	_, _ = fmt.Fprintln(w, "  4) Use mob-consensus to converge:")
+	_, _ = fmt.Fprintln(w, "       mob-consensus")
+	_, _ = fmt.Fprintf(w, "       mob-consensus alice/%s\n", exampleTwig)
 
-Getting started (next group members):
-  1) Create your personal branch:
-       mob-consensus -b origin/%s
-  2) Work/commit/push on %s/%s as usual.
-  3) See who's ahead/behind/diverged:
-       mob-consensus
-  4) Merge a teammate branch when ready:
-       mob-consensus alice/%s
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Commands:")
+	_, _ = fmt.Fprintf(w, "  (no args)     Fetch, then list related branches ending in */<twig> (example: */%s).\n", exampleTwig)
+	_, _ = fmt.Fprintln(w, "  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.")
+	_, _ = fmt.Fprintf(w, "  -b BASE       Create %s/%s from BASE and switch to it (does not push).\n", user, exampleTwig)
 
-Commands:
-  (no args)     Fetch, then list related branches ending in */<twig> (example: */%s).
-  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
-  -b BASE       Create %s/%s from BASE and push upstream.
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Notes:")
+	_, _ = fmt.Fprintf(w, "  - For discovery/merge, you must be on a %s/ branch (use -F to override).\n", user)
+	_, _ = fmt.Fprintln(w, "  - If your working tree is dirty, use -c to commit it first, or clean it manually.")
+	_, _ = fmt.Fprintln(w, "  - Use -n to disable automatic pushes after commits/merges.")
 
-Notes:
-  - For discovery/merge, you must be on a %s/ branch (use -F to override).
-  - If your working tree is dirty, use -c to commit it first, or clean it manually.
-
-Flags:
-  -F force run even if not on a %s/ branch
-  -b create new branch named %s/<twig> based on BASE_BRANCH
-  -n no automatic push after commit
-  -c commit existing uncommitted changes
-`, user, exampleTwig, exampleTwig, exampleTwig, exampleTwig, exampleTwig, exampleTwig, user, exampleTwig, exampleTwig, exampleTwig, user, exampleTwig, user, user, user)
+	_, _ = fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "Flags:")
+	_, _ = fmt.Fprintf(w, "  -F force run even if not on a %s/ branch\n", user)
+	_, _ = fmt.Fprintf(w, "  -b create new branch named %s/<twig> based on BASE_BRANCH\n", user)
+	_, _ = fmt.Fprintln(w, "  -n no automatic push after commit")
+	_, _ = fmt.Fprintln(w, "  -c commit existing uncommitted changes")
 	return nil
 }
 
@@ -187,7 +199,7 @@ func requireUserBranch(force bool, user, currentBranch string) error {
 	return fmt.Errorf("mob-consensus: you aren't on a '%s/' branch", user)
 }
 
-func runCreateBranch(ctx context.Context, opts options, user string) error {
+func runCreateBranch(ctx context.Context, opts options, user string, stdout io.Writer) error {
 	if err := ensureClean(ctx, opts, true); err != nil {
 		return err
 	}
@@ -198,7 +210,53 @@ func runCreateBranch(ctx context.Context, opts options, user string) error {
 	if err := gitRun(ctx, "checkout", "-b", newBranch, baseBranch); err != nil {
 		return err
 	}
-	return gitRun(ctx, "push", "--set-upstream", "origin", newBranch)
+	fmt.Fprintln(stdout)
+	fmt.Fprintln(stdout, "Next: push your branch when you're ready.")
+	return printPushAdvice(ctx, stdout, newBranch)
+}
+
+func printPushAdvice(ctx context.Context, w io.Writer, branch string) error {
+	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	if err != nil {
+		fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
+		fmt.Fprintln(w, "  (Hint: git remote -v)")
+		return nil
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(remotesOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		remotes = append(remotes, line)
+	}
+
+	if len(remotes) == 0 {
+		fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
+		fmt.Fprintln(w, "  (No remotes configured; see: git remote -v)")
+		return nil
+	}
+
+	var suggested string
+	for _, r := range remotes {
+		if r == "origin" {
+			suggested = "origin"
+			break
+		}
+	}
+	if suggested == "" && len(remotes) == 1 {
+		suggested = remotes[0]
+	}
+
+	if suggested != "" {
+		fmt.Fprintf(w, "  git push -u %s %s\n", suggested, branch)
+		return nil
+	}
+
+	fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
+	fmt.Fprintf(w, "  Available remotes: %s\n", strings.Join(remotes, ", "))
+	return nil
 }
 
 func runDiscovery(ctx context.Context, opts options, currentBranch string, stdout io.Writer) error {
