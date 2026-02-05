@@ -96,6 +96,7 @@ func parseArgs(args []string) (options, bool, error) {
 	fs := flag.NewFlagSet("mob-consensus", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	help := fs.Bool("h", false, "show help")
+	helpLong := fs.Bool("help", false, "show help")
 	fs.BoolVar(&opts.force, "F", false, "force run even if not on a $USER/ branch")
 	fs.StringVar(&opts.baseBranch, "b", "", "create new $USER/<twig> branch based on base branch")
 	fs.BoolVar(&opts.noPush, "n", false, "no automatic push after commits")
@@ -108,7 +109,7 @@ func parseArgs(args []string) (options, bool, error) {
 	if len(rest) > 0 {
 		opts.otherBranch = rest[0]
 	}
-	return opts, *help, nil
+	return opts, *help || *helpLong, nil
 }
 
 func printUsage(ctx context.Context, w io.Writer) error {
@@ -120,16 +121,25 @@ func printUsage(ctx context.Context, w io.Writer) error {
 	if currentBranch != "" {
 		twig = twigFromBranch(currentBranch)
 	}
+	exampleTwig := "feature-x"
+	if currentBranch != "" && strings.Contains(currentBranch, "/") {
+		exampleTwig = twig
+	}
 
 	user := os.Getenv("USER")
 	if user == "" {
 		user = "$USER"
 	}
 
-	_, _ = fmt.Fprintf(w, `Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+	_, _ = fmt.Fprintln(w, "Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]")
+	if currentBranch != "" {
+		_, _ = fmt.Fprintf(w, "\nCurrent branch: %s (twig: %s)\n", currentBranch, twig)
+	}
+
+	_, _ = fmt.Fprintf(w, `
 
 Branch convention:
-  Work on %s/<twig> branches (e.g., %s/%s).
+  Work on %s/<twig> branches (e.g., alice/%s).
   The <twig> is the branch basename (everything after the final '/').
 
 Getting started (first group member):
@@ -150,7 +160,7 @@ Getting started (next group members):
        mob-consensus alice/%s
 
 Commands:
-  (no args)     Fetch, then list related branches ending in */%s.
+  (no args)     Fetch, then list related branches ending in */<twig> (example: */%s).
   OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
   -b BASE       Create %s/%s from BASE and push upstream.
 
@@ -163,7 +173,7 @@ Flags:
   -b create new branch named %s/<twig> based on BASE_BRANCH
   -n no automatic push after commit
   -c commit existing uncommitted changes
-`, user, user, twig, twig, twig, twig, twig, twig, twig, user, twig, twig, twig, user, twig, user, twig, user, twig, user, user, user)
+`, user, exampleTwig, exampleTwig, exampleTwig, exampleTwig, exampleTwig, exampleTwig, user, exampleTwig, exampleTwig, exampleTwig, user, exampleTwig, user, user, user)
 	return nil
 }
 
