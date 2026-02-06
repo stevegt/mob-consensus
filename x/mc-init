@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF' >&2
+Usage: mc-init REPO_PATH USERNAME
+
+Initializes a git worktree for mob-consensus touch/system testing by setting
+repo-local identity:
+
+  user.name  = USERNAME
+  user.email = USERNAME@example.com
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+if [[ $# -ne 2 ]]; then
+  usage
+  exit 2
+fi
+
+repo_path="$1"
+username="$2"
+
+if [[ "$username" == *"@"* ]]; then
+  echo "mc-init: USERNAME must not contain '@' (got: $username)" >&2
+  exit 2
+fi
+
+if ! git check-ref-format --branch "$username/probe" >/dev/null 2>&1; then
+  echo "mc-init: USERNAME is not a valid branch prefix: $username" >&2
+  exit 2
+fi
+
+if ! git -C "$repo_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "mc-init: not a git worktree: $repo_path" >&2
+  exit 2
+fi
+
+email="$username@example.com"
+git -C "$repo_path" config --local user.name "$username"
+git -C "$repo_path" config --local user.email "$email"
+
+echo "mc-init: configured $repo_path" >&2
+echo "  user.name  = $username" >&2
+echo "  user.email = $email" >&2

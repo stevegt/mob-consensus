@@ -1,60 +1,58 @@
-# TODO 004 - Per-repo test user wrapper script
+# TODO 004 - Per-repo test user init script
 
-Goal: make “touch testing” `mob-consensus` with simulated users easy **without creating Linux users** and without constantly reconfiguring Git identity by hand.
+Goal: make “touch testing” `mob-consensus` with simulated users easy **without creating Linux users** and without repeatedly typing `git config --local ...` by hand.
 
 `mob-consensus` derives the `<user>/` branch prefix from `git config user.email` (the part left of `@`). For testing, we can use emails like `alice@example.com`.
 
-Idea: store a test username in **repo-local git config** (inside `.git/config`), then use a small wrapper that:
-1) configures `user.name`/`user.email` for the current clone, and
-2) exec’s `mob-consensus "$@"`.
+Idea: add a small init script that configures each test clone’s **repo-local Git identity** once:
 
-- [ ] 004.1 Pick the repo-local config key name (recommend `mob-consensus.testUser`).
-- [ ] 004.2 Implement a wrapper script (suggest `x/mc-test` or `bin/mc-test`) with two modes:
-  - [ ] 004.2.1 `mc-test init <user>`: write repo-local config for this clone.
-  - [ ] 004.2.2 `mc-test [mob-consensus args...]`: sanity-check config, exec `mob-consensus`.
-- [ ] 004.3 In `init`, also set git identity for correct attribution:
-  - `git config --local user.name <user>`
-  - `git config --local user.email <user>@example.com` (or allow `--email` override)
-- [ ] 004.4 Error behavior:
-  - not in a git repo → fail with a short message
-  - test user not configured → print `mc-test init <user>` hint
-- [ ] 004.5 Update TODO 002 harness examples to use `mc-test` (optional).
+- `x/mc-init <repo-path> <username>`
+  - sets `user.name=<username>`
+  - sets `user.email=<username>@example.com`
+
+- [x] 004.1 Implement `x/mc-init` (usage: `mc-init REPO_PATH USERNAME`).
+  - [x] 004.1.1 Validate args and that `REPO_PATH` is a Git worktree.
+  - [x] 004.1.2 Reject usernames that can’t be used as a branch prefix (`git check-ref-format --branch "$user/probe"`).
+  - [x] 004.1.3 Set `user.name` and `user.email` in repo-local config (`--local`).
+- [x] 004.2 (Optional) Update TODO 002 harness to call `x/mc-init` instead of inline `git config`.
 
 ## Example usage (per clone)
 
 ```bash
+x/mc-init /path/to/alice-clone alice
+x/mc-init /path/to/bob-clone bob
+
 cd /path/to/alice-clone
-./x/mc-test init alice
-./x/mc-test -b feature-x
-./x/mc-test
-./x/mc-test origin/bob/feature-x
+mob-consensus -b feature-x
+mob-consensus
+mob-consensus origin/bob/feature-x
 ```
 
 ## Comparison with TODO 002 and TODO 003
 
 - **TODO 002 (3-clone harness + manual plan)**: simulates 3 users realistically via separate clones and per-clone git config.
-  - `mc-test` **complements** TODO 002 by making per-clone identity setup reproducible and reducing “wrong user.email” mistakes.
+  - `mc-init` **complements** TODO 002 by making per-clone identity setup reproducible and reducing “wrong user.email” mistakes.
   - It does **not** remove the need for multiple clones if you want realistic fetch/push behavior and independent working trees.
 
 - **TODO 003 (automated system test plan)**: targets repeatable `go test -tags=system` style tests.
-  - Automated tests can set env/config directly; calling a wrapper script is optional.
-  - `mc-test` is mostly a developer ergonomics tool; it can still be used by system tests, but adds an extra moving part.
+  - Automated tests can set repo-local config directly; calling a helper script is optional.
+  - `mc-init` is mostly a developer ergonomics tool.
 
 ## Pros for touch testing
 
-- **Low friction**: once `init` is run in each clone, all subsequent commands “just work”.
+- **Low friction**: once initialized per clone, all subsequent commands “just work”.
 - **Fewer footguns**: avoids accidentally running with the wrong `user.email` (and therefore the wrong `<user>/` prefix).
-- **More faithful attribution**: if `init` also sets `user.email`, the tool’s `Co-authored-by:` exclusion behaves as expected.
+- **More faithful attribution**: correct `user.email` makes the tool’s “exclude self” co-author behavior predictable.
 
 ## Cons / limitations
 
-- **Not a full simulation by itself**: if you only use one clone and flip the configured user, you lose independent working trees and some remote-tracking realism.
+- **Not a full simulation by itself**: if you only use one clone and keep re-initializing, you lose independent working trees and some remote-tracking realism.
 - **Still need separate clones** for “three users” in the practical sense (parallel edits, independent fetch/push timing, conflict reproduction).
-- **Identity coupling**: branch naming and attribution depend on `user.name`/`user.email`; `init` must set those or results will be confusing.
+- **Identity coupling**: branch naming and attribution depend on `user.name`/`user.email`; `mc-init` must set those or results will be confusing.
 
 ## Will it work?
 
-Yes, if `init` sets `user.email` (and ideally `user.name`) per clone.
+Yes, if each clone has its own repo-local `user.email` (and ideally `user.name`) set.
 
 Things to watch for:
 - `mob-consensus` uses the part left of `@` in `git config user.email` for branch naming/validation; it also uses `user.email` to exclude “self” from co-author trailers.

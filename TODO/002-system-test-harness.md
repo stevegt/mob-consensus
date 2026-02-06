@@ -32,12 +32,12 @@ git -C "$ROOT/seed" push -u origin main
 # Build mob-consensus from this repo
 go build -o "$ROOT/mob-consensus" .
 MC="$ROOT/mob-consensus"
+MC_INIT="$(pwd)/x/mc-init"
 
 # Simulated users
 for u in alice bob carol; do
   git clone "$REMOTE" "$ROOT/$u"
-  git -C "$ROOT/$u" config user.name "$u"
-  git -C "$ROOT/$u" config user.email "$u@example.com"
+  "$MC_INIT" "$ROOT/$u" "$u"
 done
 ```
 
