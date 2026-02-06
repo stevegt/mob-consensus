@@ -37,12 +37,12 @@ This avoids prompts, avoids requiring `vimdiff` to be installed, and makes `git 
 
 1) **Branch creation (no push required)**
 - Arrange: in `alice/`, create `feature-x` from `main`.
-- Act: run `USER=alice mob-consensus -b feature-x`.
+- Act: run `mob-consensus -b feature-x`.
 - Assert: current branch is `alice/feature-x`; stdout contains a `git push -u` suggestion.
 
 2) **Discovery statuses**
 - Arrange: make/push commits such that `bob/feature-x` is ahead; then create diverged histories.
-- Act: run `USER=alice mob-consensus`.
+- Act: run `mob-consensus`.
 - Assert: output contains “is ahead”, “is behind”, and “has diverged” in the expected scenarios.
 
 3) **Merge no-op is success**
@@ -63,4 +63,3 @@ This avoids prompts, avoids requiring `vimdiff` to be installed, and makes `git 
 ## Follow-ups
 
 If automated merge testing remains brittle, prefer implementing TODO 001.6 so tests can run with explicit flags like `--no-tools` and `--no-edit` (or an `--editor` override) rather than depending on git config tricks.
-

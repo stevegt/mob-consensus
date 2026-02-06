@@ -60,6 +60,7 @@ Constraints:
 
 ### Branch Convention (“twig”)
 - Each collaborator uses a namespaced branch: `alice/<twig>`, `bob/<twig>`, etc.
+- The `<user>` prefix is derived from `git config user.email` (the part left of `@`).
 - The shared suffix `<twig>` is the coordination key; the tool looks for other branches ending in `/<twig>`.
 
 ### Modes
@@ -85,8 +86,8 @@ Constraints:
 
 ## Usage Flow (Typical Mob Session)
 1. Each collaborator creates their own branch for the same twig (from a shared base):
-   - Example: `mob-consensus -b feature-x` → creates `$USER/feature-x` and prints a suggested `git push -u ...`.
-2. Collaborators work normally (edit/commit/push on their own `$USER/<twig>` branches).
+   - Example: `mob-consensus -b feature-x` → creates `<user>/feature-x` and prints a suggested `git push -u ...`.
+2. Collaborators work normally (edit/commit/push on their own `<user>/<twig>` branches).
 3. Periodically, anyone runs `mob-consensus` (no args) to see which sibling branches are ahead/behind/diverged.
 4. When it’s time to converge, pick a sibling branch and merge it into the current branch:
    - Example: `mob-consensus jj/feature-x`
@@ -95,6 +96,6 @@ Constraints:
 
 ## How It Differs From PRs / Code Review
 - **Multilateral vs bilateral**: PRs are typically one-to-one (contributor → reviewer); `mob-consensus` is many-to-many (multiple contributors converge together).
-- **Integration location**: PRs usually merge into a branch owned by a primary maintainer (e.g., `main`); `mob-consensus` merges into each participant’s `$USER/<twig>` branch, with convergence achieved over time.
+- **Integration location**: PRs usually merge into a branch owned by a primary maintainer (e.g., `main`); `mob-consensus` merges into each participant’s `<user>/<twig>` branch, with convergence achieved over time.
 - **Review artifact**: PR discussion threads live outside Git history; `mob-consensus` records the consensus point as a merge commit plus co-author attribution.
 - **Lower ceremony, higher frequency**: encourages frequent, small convergence steps rather than infrequent “big PR” events.

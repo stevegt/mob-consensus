@@ -2,11 +2,11 @@
 
 Goal: system-test the Go `mob-consensus` CLI with **three simulated users** without creating multiple Linux accounts.
 
-Approach: use **three separate clones/worktrees** plus per-repo Git identity and `USER=` env overrides.
+Approach: use **three separate clones/worktrees** plus per-clone Git identity (`user.name`/`user.email`).
 
 - [ ] 002.1 Create a local bare “remote” and seed it with `main`.
 - [ ] 002.2 Create 3 clones (`alice`, `bob`, `carol`) and set per-clone `user.name`/`user.email`.
-- [ ] 002.3 Build a local `mob-consensus` binary and run it from each clone with `USER=<name>`.
+- [ ] 002.3 Build a local `mob-consensus` binary and run it from each clone.
 - [ ] 002.4 Run the manual test matrix below and record results (pass/fail + notes).
 
 ## Harness (copy/paste)
@@ -47,7 +47,7 @@ done
 - In `alice/`, create a local twig branch from whatever base you want:
   - `git -C "$ROOT/alice" switch -c feature-x main`
 - Create the personal branch from the local twig:
-  - `(cd "$ROOT/alice" && USER=alice "$MC" -b feature-x)`
+  - `(cd "$ROOT/alice" && "$MC" -b feature-x)`
 - Verify:
   - Branch is now `alice/feature-x`.
   - Output prints a suggested `git push -u ... alice/feature-x`.
@@ -59,22 +59,22 @@ done
   - `git -C "$ROOT/bob" switch -c feature-x main`
   - `git -C "$ROOT/carol" switch -c feature-x main`
 - Create personal branches:
-  - `(cd "$ROOT/bob" && USER=bob "$MC" -b feature-x)`
-  - `(cd "$ROOT/carol" && USER=carol "$MC" -b feature-x)`
+  - `(cd "$ROOT/bob" && "$MC" -b feature-x)`
+  - `(cd "$ROOT/carol" && "$MC" -b feature-x)`
 - Push:
   - `git -C "$ROOT/bob" push -u origin bob/feature-x`
   - `git -C "$ROOT/carol" push -u origin carol/feature-x`
 
 ### Discovery output
 Create commits and verify statuses from one user’s perspective (run in `alice/`):
-- **Ahead**: make a commit on `bob/feature-x` and push; run `USER=alice "$MC"` and confirm `bob/feature-x` reports “ahead”.
-- **Behind**: make a commit on `alice/feature-x` only; confirm the same branch reports “behind” from Bob’s view (`USER=bob "$MC"`).
+- **Ahead**: make a commit on `bob/feature-x` and push; run `"$MC"` in `alice/` and confirm `bob/feature-x` reports “ahead”.
+- **Behind**: make a commit on `alice/feature-x` only; confirm the same branch reports “behind” from Bob’s view (run `"$MC"` in `bob/`).
 - **Diverged**: make commits on both `alice/feature-x` and `bob/feature-x` without merging; confirm it reports “has diverged”.
 - **Synced**: after merging/pushing, confirm it reports “synced”.
 
 ### Merge mode (manual)
 Run merges in `alice/`:
-- Clean merge: `USER=alice "$MC" origin/bob/feature-x` (resolve/review, commit, push).
+- Clean merge: `"$MC" origin/bob/feature-x` (resolve/review, commit, push).
 - No-op merge: run the same command again; it should exit success and not try to commit.
 - Conflict merge: create an intentional conflict between two branches; confirm mergetool launches and the flow continues to commit once resolved.
 
@@ -88,4 +88,3 @@ Run merges in `alice/`:
 - No remote name is assumed by `mob-consensus -b`.
 - “Already up to date” merges are treated as success.
 - Discovery clearly distinguishes ahead/behind/diverged/synced.
-
