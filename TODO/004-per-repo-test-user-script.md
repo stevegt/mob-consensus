@@ -6,21 +6,21 @@ Goal: make “touch testing” `mob-consensus` with simulated users easy **witho
 
 Idea: add a small init script that configures each test clone’s **repo-local Git identity** once:
 
-- `x/mc-init <repo-path> <username>`
+- `scripts/mc-init <repo-path> <username>`
   - sets `user.name=<username>`
   - sets `user.email=<username>@example.com`
 
-- [x] 004.1 Implement `x/mc-init` (usage: `mc-init REPO_PATH USERNAME`).
+- [x] 004.1 Implement `scripts/mc-init` (usage: `mc-init REPO_PATH USERNAME`).
   - [x] 004.1.1 Validate args and that `REPO_PATH` is a Git worktree.
   - [x] 004.1.2 Reject usernames that can’t be used as a branch prefix (`git check-ref-format --branch "$user/probe"`).
   - [x] 004.1.3 Set `user.name` and `user.email` in repo-local config (`--local`).
-- [x] 004.2 (Optional) Update TODO 002 harness to call `x/mc-init` instead of inline `git config`.
+- [x] 004.2 (Optional) Update TODO 002 harness to call `scripts/mc-init` instead of inline `git config`.
 
 ## Example usage (per clone)
 
 ```bash
-x/mc-init /path/to/alice-clone alice
-x/mc-init /path/to/bob-clone bob
+scripts/mc-init /path/to/alice-clone alice
+scripts/mc-init /path/to/bob-clone bob
 
 cd /path/to/alice-clone
 mob-consensus -b feature-x

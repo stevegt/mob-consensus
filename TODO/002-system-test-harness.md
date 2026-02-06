@@ -32,7 +32,7 @@ git -C "$ROOT/seed" push -u origin main
 # Build mob-consensus from this repo
 go build -o "$ROOT/mob-consensus" .
 MC="$ROOT/mob-consensus"
-MC_INIT="$(pwd)/x/mc-init"
+MC_INIT="$(pwd)/scripts/mc-init"
 
 # Simulated users
 for u in alice bob carol; do
