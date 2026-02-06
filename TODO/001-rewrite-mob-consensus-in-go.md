@@ -64,7 +64,7 @@ Constraints:
 
 ### Modes
 - **Status / discovery mode (no args)**: `git fetch`, then lists related branches and prints whether each is ahead/behind/synced relative to the current branch.
-- **Branch bootstrap (`-b BASE_BRANCH`)**: creates a new `$USER/<twig>` branch based on `BASE_BRANCH` and pushes it with an upstream.
+- **Branch bootstrap (`-b BASE_BRANCH`)**: creates a new `<user>/<twig>` branch based on `BASE_BRANCH` (does not push; it prints a suggested `git push -u ...`).
 - **Merge mode (`OTHER_BRANCH`)**: performs an explicit, manual merge of `OTHER_BRANCH` into the current branch, including conflict resolution and review, then commits and (optionally) pushes.
 
 ## How It Builds Multilateral Consensus
