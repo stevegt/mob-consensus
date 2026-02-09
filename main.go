@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	. "github.com/stevegt/goadapt"
 )
 
 type options struct {
@@ -24,17 +26,48 @@ type options struct {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			printPanic(os.Stderr, r)
+			os.Exit(1)
+		}
+	}()
+
 	ctx := context.Background()
 	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		var uerr usageError
 		if errors.As(err, &uerr) {
-			fmt.Fprintln(os.Stderr, uerr.Err)
+			printError(os.Stderr, uerr.Err)
 			_ = printUsage(ctx, os.Stderr)
 			os.Exit(1)
 		}
-		fmt.Fprintln(os.Stderr, err)
+		printError(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func printError(w io.Writer, err error) {
+	if err == nil {
+		return
+	}
+
+	type msgError interface {
+		Msg() string
+	}
+	var me msgError
+	if errors.As(err, &me) {
+		fmt.Fprintln(w, me.Msg())
+		return
+	}
+	fmt.Fprintln(w, err)
+}
+
+func printPanic(w io.Writer, r any) {
+	if err, ok := r.(error); ok {
+		printError(w, err)
+		return
+	}
+	fmt.Fprintln(w, r)
 }
 
 type usageError struct {
@@ -81,17 +114,13 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case opts.baseBranch != "":
 		return runCreateBranch(ctx, opts, user, stdout)
 	case opts.otherBranch == "":
-		bestEffortFetch(ctx, stderr)
+		err := gitRun(ctx, "fetch")
+		Ck(err)
 		return runDiscovery(ctx, opts, currentBranch, stdout)
 	default:
-		bestEffortFetch(ctx, stderr)
+		err := gitRun(ctx, "fetch")
+		Ck(err)
 		return runMerge(ctx, opts, currentBranch, stdout)
-	}
-}
-
-func bestEffortFetch(ctx context.Context, stderr io.Writer) {
-	if err := gitRun(ctx, "fetch"); err != nil {
-		fmt.Fprintln(stderr, "mob-consensus: warning: git fetch failed; continuing with local refs")
 	}
 }
 
