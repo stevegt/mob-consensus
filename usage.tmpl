@@ -1,0 +1,79 @@
+Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+{{- if .CurrentBranch}}
+Current branch: {{.CurrentBranch}} (twig: {{.Twig}})
+{{- end}}
+
+Branch convention:
+  Each collaborator works on <user>/<twig> branches (e.g., {{.User}}/{{.ExampleTwig}}).
+  The <user> is derived from `git config user.email` (the part left of '@').
+  The <twig> is the branch basename (everything after the final '/').
+
+Prereq:
+  - This tool derives <user>/ branch names from repo-local git identity.
+    Current:
+      user.name  = {{if .UserName}}{{.UserName}}{{else}}(unset){{end}}
+      user.email = {{if .UserEmail}}{{.UserEmail}}{{else}}(unset){{end}}
+    Derived <user> (from user.email) = {{if .UserEmailSet}}{{if .DerivedUser}}{{.DerivedUser}}{{else}}(empty){{end}}{{else}}(unset){{end}}
+    Examples below use <user> = {{.User}}{{if and .UserEmailSet (not .DerivedUserValid)}} (because derived <user> is invalid){{end}}
+
+{{- if not .UserEmailSet}}
+  - Set a per-repo identity (example for testing):
+      git config --local user.name "{{if .UserName}}{{.UserName}}{{else}}{{.User}}{{end}}"
+      git config --local user.email {{.User}}@example.com
+{{- else if not .DerivedUserValid}}
+  - Your user.email is set, but its local-part does not make a valid branch prefix.
+    Fix it (example for testing):
+      git config --local user.email alice@example.com
+{{- end}}
+
+Remote:
+  {{- if .HasRemotes}}
+  Available remotes: {{.Remotes}}
+  {{- if not .RemoteIsPlaceholder}}
+  Using: {{.Remote}} ({{.RemoteSource}})
+  {{- else}}
+  Pick <remote> from: git remote -v
+  {{- end}}
+  {{- else}}
+  No remotes configured (see: git remote -v)
+  {{- end}}
+
+Getting started (first group member):
+  1) Starting from any base branch (e.g., main), create the shared twig branch:
+       git switch -c {{.ExampleTwig}}
+  2) Push the shared twig branch (required so others can start from it):
+       git push -u {{.Remote}} {{.ExampleTwig}}
+  3) Create your personal branch from the local twig (creates {{.UserBranch}}):
+       mob-consensus -b {{.ExampleTwig}}
+       # (-b takes the shared twig name; it creates and switches to {{.UserBranch}}.)
+  4) Push your personal branch:
+       git push -u {{.Remote}} {{.UserBranch}}
+
+Getting started (next group members):
+  1) Get the shared twig branch locally (example uses <remote>):
+       git fetch {{.Remote}}
+       git switch -c {{.ExampleTwig}} {{.Remote}}/{{.ExampleTwig}}
+  2) Create your personal branch (creates {{.UserBranch}}):
+       mob-consensus -b {{.ExampleTwig}}
+       # (-b takes the shared twig name; it creates and switches to {{.UserBranch}}.)
+  3) Push your personal branch:
+       git push -u {{.Remote}} {{.UserBranch}}
+  4) Use mob-consensus to converge:
+       mob-consensus
+       mob-consensus {{.PeerRef}}
+
+Commands:
+  (no args)     Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).
+  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
+  -b BASE       Create {{.UserBranch}} from BASE and switch to it (does not push).
+
+Notes:
+  - For discovery/merge, you must be on a {{.User}}/ branch (use -F to override).
+  - If your working tree is dirty, use -c to commit it first, or clean it manually.
+  - Use -n to disable automatic pushes after commits/merges.
+
+Flags:
+  -F force run even if not on a <user>/ branch
+  -b create new branch named <user>/<twig> based on BASE_BRANCH
+  -n no automatic push after commit
+  -c commit existing uncommitted changes

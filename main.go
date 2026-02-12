@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,9 +14,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"text/template"
 
 	. "github.com/stevegt/goadapt"
 )
+
+//go:embed usage.tmpl
+var usageTemplate string
 
 type options struct {
 	force       bool
@@ -145,78 +150,152 @@ func parseArgs(args []string) (options, bool, error) {
 	return opts, *help || *helpLong, nil
 }
 
+type usageData struct {
+	CurrentBranch string
+	Twig          string
+	ExampleTwig   string
+
+	User       string
+	UserBranch string
+	PeerBranch string
+	PeerRef    string
+
+	DerivedUser      string
+	DerivedUserValid bool
+
+	UserName     string
+	UserEmail    string
+	UserEmailSet bool
+
+	Remote              string
+	HasRemotes          bool
+	RemoteIsPlaceholder bool
+	RemoteSource        string
+	Remotes             string
+}
+
 func printUsage(ctx context.Context, w io.Writer) error {
 	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		currentBranch = ""
 	}
+
 	twig := "twig"
 	if currentBranch != "" {
 		twig = twigFromBranch(currentBranch)
 	}
+
 	exampleTwig := "feature-x"
-	if currentBranch != "" && strings.Contains(currentBranch, "/") {
-		exampleTwig = twig
+	if currentBranch != "" && currentBranch != "HEAD" && twig != "" {
+		switch twig {
+		case "main", "master":
+		default:
+			exampleTwig = twig
+		}
+	}
+
+	userName, _ := gitOutputTrimmed(ctx, "config", "--get", "user.name")
+	userEmail, _ := gitOutputTrimmed(ctx, "config", "--get", "user.email")
+	userEmailSet := userEmail != ""
+
+	derivedUser := ""
+	derivedUserValid := false
+	if userEmailSet {
+		derivedUser = strings.TrimSpace(userEmail)
+		if at := strings.IndexByte(derivedUser, '@'); at >= 0 {
+			derivedUser = derivedUser[:at]
+		}
+		derivedUser = strings.TrimSpace(derivedUser)
+		if derivedUser != "" {
+			probe := derivedUser + "/probe"
+			if _, err := gitOutput(ctx, "check-ref-format", "--branch", probe); err == nil {
+				derivedUserValid = true
+			}
+		}
 	}
 
 	user := "alice"
-	if u, err := branchUserFromEmail(ctx); err == nil && u != "" {
-		user = u
+	if derivedUserValid {
+		user = derivedUser
 	}
 
-	_, _ = fmt.Fprintln(w, "Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]")
-	if currentBranch != "" {
-		_, _ = fmt.Fprintf(w, "\nCurrent branch: %s (twig: %s)\n", currentBranch, twig)
+	remote, remotes, remoteSource := suggestedRemote(ctx)
+	remoteIsPlaceholder := remote == ""
+	if remoteIsPlaceholder {
+		remote = "<remote>"
 	}
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Branch convention:")
-	_, _ = fmt.Fprintf(w, "  Each collaborator works on <user>/<twig> branches (e.g., %s/%s).\n", user, exampleTwig)
-	_, _ = fmt.Fprintln(w, "  The <user> is derived from `git config user.email` (the part left of '@').")
-	_, _ = fmt.Fprintln(w, "  The <twig> is the branch basename (everything after the final '/').")
+	peerUser := "bob"
+	if user == peerUser {
+		peerUser = "alice"
+	}
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Getting started (first group member):")
-	_, _ = fmt.Fprintln(w, "  1) Starting from any base branch (e.g., main), create the shared twig branch:")
-	_, _ = fmt.Fprintf(w, "       git switch -c %s\n", exampleTwig)
-	_, _ = fmt.Fprintln(w, "  2) Create your personal branch from that local twig:")
-	_, _ = fmt.Fprintf(w, "       mob-consensus -b %s\n", exampleTwig)
-	_, _ = fmt.Fprintln(w, "  3) Push your personal branch (pick a remote from `git remote -v`):")
-	_, _ = fmt.Fprintf(w, "       git push -u <remote> %s/%s\n", user, exampleTwig)
-	_, _ = fmt.Fprintln(w, "     (Optionally also push the shared twig: `git push -u <remote> <twig>`.)")
+	data := usageData{
+		CurrentBranch: currentBranch,
+		Twig:          twig,
+		ExampleTwig:   exampleTwig,
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Getting started (next group members):")
-	_, _ = fmt.Fprintln(w, "  1) Get the shared twig branch locally (example uses <remote>):")
-	_, _ = fmt.Fprintln(w, "       git fetch <remote>")
-	_, _ = fmt.Fprintf(w, "       git switch -c %s <remote>/%s\n", exampleTwig, exampleTwig)
-	_, _ = fmt.Fprintln(w, "  2) Create your personal branch:")
-	_, _ = fmt.Fprintf(w, "       mob-consensus -b %s\n", exampleTwig)
-	_, _ = fmt.Fprintln(w, "  3) Push your personal branch:")
-	_, _ = fmt.Fprintf(w, "       git push -u <remote> %s/%s\n", user, exampleTwig)
-	_, _ = fmt.Fprintln(w, "  4) Use mob-consensus to converge:")
-	_, _ = fmt.Fprintln(w, "       mob-consensus")
-	_, _ = fmt.Fprintf(w, "       mob-consensus alice/%s\n", exampleTwig)
+		User:       user,
+		UserBranch: user + "/" + exampleTwig,
+		PeerBranch: peerUser + "/" + exampleTwig,
+		PeerRef:    remote + "/" + peerUser + "/" + exampleTwig,
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Commands:")
-	_, _ = fmt.Fprintf(w, "  (no args)     Fetch, then list related branches ending in */<twig> (example: */%s).\n", exampleTwig)
-	_, _ = fmt.Fprintln(w, "  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.")
-	_, _ = fmt.Fprintf(w, "  -b BASE       Create %s/%s from BASE and switch to it (does not push).\n", user, exampleTwig)
+		DerivedUser:      derivedUser,
+		DerivedUserValid: derivedUserValid,
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Notes:")
-	_, _ = fmt.Fprintf(w, "  - For discovery/merge, you must be on a %s/ branch (use -F to override).\n", user)
-	_, _ = fmt.Fprintln(w, "  - If your working tree is dirty, use -c to commit it first, or clean it manually.")
-	_, _ = fmt.Fprintln(w, "  - Use -n to disable automatic pushes after commits/merges.")
+		UserName:     userName,
+		UserEmail:    userEmail,
+		UserEmailSet: userEmailSet,
 
-	_, _ = fmt.Fprintln(w, "")
-	_, _ = fmt.Fprintln(w, "Flags:")
-	_, _ = fmt.Fprintf(w, "  -F force run even if not on a %s/ branch\n", user)
-	_, _ = fmt.Fprintf(w, "  -b create new branch named %s/<twig> based on BASE_BRANCH\n", user)
-	_, _ = fmt.Fprintln(w, "  -n no automatic push after commit")
-	_, _ = fmt.Fprintln(w, "  -c commit existing uncommitted changes")
-	return nil
+		Remote:              remote,
+		HasRemotes:          len(remotes) > 0,
+		RemoteIsPlaceholder: remoteIsPlaceholder,
+		RemoteSource:        remoteSource,
+		Remotes:             strings.Join(remotes, ", "),
+	}
+
+	tmpl, err := template.New("usage").Option("missingkey=error").Parse(usageTemplate)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
+}
+
+func suggestedRemote(ctx context.Context) (string, []string, string) {
+	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	if err != nil {
+		return "", nil, ""
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(remotesOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		remotes = append(remotes, line)
+	}
+	if len(remotes) == 0 {
+		return "", nil, ""
+	}
+
+	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err == nil && upstream != "" {
+		if i := strings.IndexByte(upstream, '/'); i > 0 {
+			upstreamRemote := upstream[:i]
+			for _, r := range remotes {
+				if r == upstreamRemote {
+					return upstreamRemote, remotes, "from current branch upstream"
+				}
+			}
+		}
+	}
+
+	if len(remotes) == 1 {
+		return remotes[0], remotes, "only configured remote"
+	}
+
+	return "", remotes, ""
 }
 
 func branchUserFromEmail(ctx context.Context) (string, error) {
@@ -270,46 +349,19 @@ func runCreateBranch(ctx context.Context, opts options, user string, stdout io.W
 }
 
 func printPushAdvice(ctx context.Context, w io.Writer, branch string) error {
-	remotesOut, err := gitOutputTrimmed(ctx, "remote")
-	if err != nil {
-		fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
-		fmt.Fprintln(w, "  (Hint: git remote -v)")
-		return nil
-	}
-
-	var remotes []string
-	for _, line := range strings.Split(remotesOut, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		remotes = append(remotes, line)
-	}
-
-	if len(remotes) == 0 {
-		fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
-		fmt.Fprintln(w, "  (No remotes configured; see: git remote -v)")
-		return nil
-	}
-
-	var suggested string
-	for _, r := range remotes {
-		if r == "origin" {
-			suggested = "origin"
-			break
-		}
-	}
-	if suggested == "" && len(remotes) == 1 {
-		suggested = remotes[0]
-	}
-
-	if suggested != "" {
-		fmt.Fprintf(w, "  git push -u %s %s\n", suggested, branch)
+	remote, remotes, _ := suggestedRemote(ctx)
+	if remote != "" {
+		fmt.Fprintf(w, "  git push -u %s %s\n", remote, branch)
 		return nil
 	}
 
 	fmt.Fprintf(w, "  git push -u <remote> %s\n", branch)
-	fmt.Fprintf(w, "  Available remotes: %s\n", strings.Join(remotes, ", "))
+	switch len(remotes) {
+	case 0:
+		fmt.Fprintln(w, "  (Hint: git remote -v)")
+	default:
+		fmt.Fprintf(w, "  Available remotes: %s\n", strings.Join(remotes, ", "))
+	}
 	return nil
 }
 
