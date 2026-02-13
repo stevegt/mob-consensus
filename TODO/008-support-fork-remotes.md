@@ -43,6 +43,65 @@ Gaps:
 
 - Prefer deterministic behavior and clear errors over guessing.
 
+## Repo-tracked collaborator configuration
+
+Motivation: with multiple collaborator forks, new group members need a
+painless way to discover all collaborator remotes, and existing members
+need a canonical place to keep the list up to date.
+
+### Config file vs config directory
+
+Single config file (ex: `mob-consensus.toml` or `.mob-consensus.toml`):
+- Pros:
+  - Easy to discover/review and easy to point users at (“edit this file”).
+  - Simple to parse and to keep in sync with `mob-consensus init`.
+  - Works well for small groups.
+- Cons:
+  - Higher chance of merge conflicts if multiple people edit it at once.
+  - Can become a “junk drawer” as settings accumulate.
+
+Config directory (ex: `.mob-consensus/` with `config.toml` and `remotes.d/`):
+- XXX use .mob-consensus/remotes/
+- Pros:
+  - Scales better: separate files for remotes/policy/templates reduces conflicts.
+  - Can go “one collaborator per file” (ex: `.mob-consensus/remotes.d/jj.conf`), which avoids
+    everyone editing the same file.
+  - Easier to extend without turning one file into a wall of settings.
+- Cons:
+  - More moving parts; less obvious for first-time users.
+  - Slightly more work to document and implement.
+
+### Naming options
+
+File:
+- `mob-consensus.toml` (very discoverable)
+- `.mob-consensus.toml` (keeps root clean)
+- `mob-consensus.conf` (line-oriented, easy to parse without extra deps)
+
+Directory:
+- `.mob-consensus/config.toml` (clear “tool-owned” area)
+- `.mob-consensus/remotes` (line-oriented remotes list)  XXX use this one
+
+### Format considerations
+
+- XXX does this matter if we're using .mob-consensus/remotes/ with one file per remote?
+
+- TOML/YAML: friendlier for humans, but adds a parsing dependency in Go.
+- JSON: no extra deps, but unpleasant to hand-edit.
+- Line-oriented `.conf`: easiest to implement without deps; good fit if the
+  first feature is “list collaborator remotes”.
+
+### Minimal config contents (suggestion)
+
+- Collaborator remotes (names + URLs or derivable usernames).
+- Optional defaults:
+  - `fetch` remote list (which collaborator remotes to fetch)
+  - `push` remote (your fork remote name; often `origin`)
+  - `twigSource` remote (where to fetch the shared twig from when joining)
+
+Note: repo config is shared; per-user overrides should live in `.git/config`
+or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
+
 ## Subtasks
 
 - [ ] 008.1 Define CLI/config knobs (keep defaults safe).
@@ -56,6 +115,10 @@ Gaps:
     where the “shared twig” branch is fetched from. (In a `start` flow,
     the twig is created and pushed to the push remote; in a `join` flow,
     the twig is fetched from someone else’s fork.)
+  - [ ] 008.1.4 Add a repo-tracked collaborator config (file or dir) that lists remotes.
+    - [ ] 008.1.4.1 Decide: single file vs config dir; pick a name/path.
+    - [ ] 008.1.4.2 Decide format (TOML vs line-oriented `.conf` vs JSON).
+    - [ ] 008.1.4.3 Define minimal schema: collaborator remotes + optional defaults.
 - [ ] 008.2 Update fetch logic.
   - [ ] 008.2.1 Default behavior: fetch in a way that reliably updates
     collaborator remotes (do not rely on a single “upstream remote”).
