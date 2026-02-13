@@ -15,13 +15,6 @@ claiming tool. Claim state should be:
 - merge-conflict-free (no repo file edits required),
 - safe under concurrency (clear failure modes; no silent stealing).
 
-Constraints:
-- This repo is public; do not require exposing real identities. Support
-  an explicit `--who <label>` (e.g., `alice`, `team-a`, `anon1`).
-- Do not assume remote name `origin`; require explicit remote selection
-  when ambiguous (reuse the existing remote-selection logic).
-- Must work with fork-based collaboration (see TODO 008).
-
 ## Terminology: “remote refs” vs local refs
 
 Git refs always live *somewhere*:
@@ -127,6 +120,44 @@ Conceptual example:
 
 Note: if we ever use a non-branch namespace (anything outside `refs/heads/*`),
 we’ll need an explicit fetch refspec; using `refs/heads/claims/*` keeps it simple.
+
+## Relationship to TODO 008 (collaborator config)
+
+- TODO 008 is about **static shared knowledge**: which collaborator forks exist,
+  how to add them as remotes, and which remotes should be fetched/pushed to.
+- This TODO is about **dynamic shared state**: who is claiming what *right now*.
+- In fork workflows, claims only become visible once you know which remotes to
+  fetch. That is exactly what TODO 008’s repo-tracked collaborator config solves:
+  `mob-consensus claims` can iterate the configured collaborator remotes and
+  fetch/list claim refs predictably.
+
+## Claims in refs vs claims in configs
+
+Claims stored in refs (this TODO’s approach):
+- Pros:
+  - No working-tree file edits → no merge conflicts and no “assignment commits”.
+  - Can be near-atomic on a single coordination remote (exclusive claim can be enforced).
+  - Naturally supports “visible after `git fetch`”.
+- Cons:
+  - Requires somewhere to push claim refs:
+    - coordination remote (shared write access), or
+    - per-fork claims (then exclusivity is advisory and collisions are detected, not prevented).
+  - Less discoverable than files without tooling (`mob-consensus claims` must exist).
+  - Can clutter namespaces unless strictly namespaced (e.g., `refs/heads/claims/...`).
+
+Claims stored in repo-tracked config files/dirs:
+- Pros:
+  - Very discoverable and human-readable.
+  - A config directory can reduce merge conflicts by splitting state (one file per item/person).
+- Cons:
+  - Sharing requires commits + pushes + merges/PRs → stale views and merge-hostile contention.
+  - Concurrency is worse: two people can “claim” simultaneously and only discover the conflict at merge time.
+  - In fork-only workflows, updating a shared repo-tracked config often implies PRs to upstream
+    (slow/ceremonial), or each fork diverges (not shared).
+
+Recommendation:
+- Use TODO 008’s repo-tracked config to publish collaborator remotes and defaults.
+- Store claim state in refs, not in config files.
 
 ## Stalled claims / reassignment
 
