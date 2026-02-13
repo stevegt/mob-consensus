@@ -54,6 +54,31 @@ Key design choice differences to preserve from `main`:
 Do not merge `remotes/jj/main` directly. Instead, port JJ’s fixes
 selectively onto `main` while keeping `main`’s UX + docs consistent.
 
+## Preserving JJ credit
+
+Preferred: keep JJ as the commit author by cherry-picking the relevant
+commits (with `-x`), then add follow-up commits for any local policy or
+design adaptations.
+
+Why:
+- JJ stays the author of the commits she wrote (best attribution).
+- `-x` leaves a trace to the original commit hash in JJ’s fork.
+- Follow-up commits make it clear what was changed during integration.
+
+Suggested workflow:
+- Cherry-pick JJ’s focused commits (example hashes will change as her
+  branch evolves):
+  - `git cherry-pick -x <jj-commit>`
+- If a cherry-pick needs conflict resolution, the resulting commit still
+  preserves JJ as author; you are the committer.
+- If you substantially modify or extend a cherry-picked change, add a
+  follow-up commit and (optionally) include a `Co-authored-by:` trailer
+  for JJ.
+
+Avoid: “merge JJ’s branch, then revert lots of content”. That preserves
+credit, but creates noisy history and makes the integration hard to
+review because docs/design regressions and fixes arrive interleaved.
+
 ### Detailed steps
 
 - [ ] 007.1 Create an integration branch from `main` (recommended):
