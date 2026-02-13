@@ -9,6 +9,24 @@ Goal: reduce the “getting started” steps for both the **first** group member
 
 Motivation: current onboarding requires several manual git commands, and the shared twig must be pushed for others to join.
 
+## Pros / cons of doing this TODO now
+
+Pros:
+- Big UX win: fewer error-prone onboarding steps; enforce “push the shared twig” as a required gate.
+- `--plan` output becomes executable documentation (and great for bug reports: “here’s what it proposed”).
+- Safety improvements early: detect collisions/partial progress and recover cleanly from aborted starts.
+- Helps testing: the same planner can drive manual testing (TODO 002) and later automated system tests (TODO 003).
+
+Cons / risks:
+- More surface area before core behaviors are fully battle-tested (many repo/remote/branch edge cases).
+- Interactive prompting is harder to test; without a clean planner/executor split it can get brittle.
+- Wrong heuristics are costly (creating/pushing the wrong branch to the wrong remote); users may “yes” through prompts.
+
+Recommended sequencing if doing it now:
+- Implement planner-only first (`init --plan` / `start --dry-run` / `join --dry-run`, no side effects).
+- Add step-by-step execution only after the plan output is solid.
+- If remote selection is ambiguous, require an explicit choice (never guess).
+
 - [ ] 006.1 Define the UX and CLI surface (minimize flags, keep existing modes intact).
   - [ ] 006.1.1 Prefer explicit subcommands: `mob-consensus start` (first member) and `mob-consensus join` (next member).
   - [ ] 006.1.2 Add `mob-consensus init` to analyze the repo and suggest `start` vs `join` (ask for confirmation).
