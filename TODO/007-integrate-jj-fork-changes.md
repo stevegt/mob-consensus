@@ -56,38 +56,23 @@ selectively onto `main` while keeping `main`’s UX + docs consistent.
 
 ## Preserving JJ credit
 
-Preferred: keep JJ as the commit author by cherry-picking the relevant
-commits (with `-x`), then add follow-up commits for any local policy or
-design adaptations.
+Constraint: do **not** cherry-pick and do **not** merge JJ’s branch
+directly. Codex should port the *effects* of JJ’s changes into our code
+while preserving this repo’s current design decisions.
 
-Why:
-- JJ stays the author of the commits she wrote (best attribution).
-- `-x` leaves a trace to the original commit hash in JJ’s fork.
-- Follow-up commits make it clear what was changed during integration.
-
-Suggested workflow:
-- Cherry-pick JJ’s focused commits (example hashes will change as her
-  branch evolves):
-  - `git cherry-pick -x <jj-commit>`
-- If a cherry-pick needs conflict resolution, the resulting commit still
-  preserves JJ as author; you are the committer.
-- If you substantially modify or extend a cherry-picked change, add a
-  follow-up commit and (optionally) include a `Co-authored-by:` trailer
-  for JJ.
-
-Avoid: “merge JJ’s branch, then revert lots of content”. That preserves
-credit, but creates noisy history and makes the integration hard to
-review because docs/design regressions and fixes arrive interleaved.
+Credit approach:
+- Use `Co-authored-by:` trailers in the porting commits (so JJ is visibly
+  credited on GitHub).
+- Include a short “Ported from JJ fork” note listing the source commit
+  hashes (example: `1bc9103`, `6e33402`, `3abba26`) in the commit message
+  body.
 
 ### Detailed steps
 
 - [ ] 007.1 Create an integration branch from `main` (recommended):
-  `git switch -c jj-fixes`.
-- [ ] 007.2 Port code changes from `remotes/jj/main` into `main.go`
-  (either cherry-pick or manual).
-  - XXX i want codex to port the changes.  cherry-picking will create
-    a lot of conflicts and make it hard to reason about the changes.
-    LLM-based porting will be cleaner and easier to review.
+  `git switch -c jj-fixed`.
+- [ ] 007.2 Codex ports code changes from `remotes/jj/main` into `main.go`
+  (no cherry-pick).
   - [ ] 007.2.1 Idempotent branch creation: if `<user>/<twig>` exists,
     switch to it; otherwise create it.
   - [ ] 007.2.2 `ensureClean` output: accept `stdout io.Writer` and
@@ -113,9 +98,9 @@ review because docs/design regressions and fixes arrive interleaved.
   - [ ] 007.6.2 Prefer follow-up PRs that are narrowly scoped (one fix
     per PR) to reduce conflicts.
 
-## Porting on `jj-fixes` branch vs doing it on `main`
+## Porting on `jj-fixed` branch vs doing it on `main`
 
-Pros of a dedicated branch (`jj-fixes`):
+Pros of a dedicated branch (`jj-fixed`):
 - Safer: avoids leaving `main` in a half-integrated or broken state.
 - Easier review: the diff is focused on the integration work and can be iterated/rebased.
 - Easy rollback: abandon the branch if the approach is wrong.
@@ -134,4 +119,4 @@ Cons of doing it directly on `main`:
 - Harder to reason about: “what changed because of JJ integration?” becomes mixed with unrelated edits.
 - Harder to revert cleanly without backing out multiple commits.
 
-Recommendation: use `jj-fixes` unless you can complete the port in one small, fully-tested commit.
+Recommendation: use `jj-fixed` unless you can complete the port in one small, fully-tested commit.
