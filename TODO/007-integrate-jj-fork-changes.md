@@ -38,8 +38,10 @@ Key design choice differences to preserve from `main`:
 - Push behavior when no upstream is set: handle this gracefully after
   commits/merges.
   - Prefer: if upstream is missing, run `git push -u <remote>
-    <branch>` **only when** a remote can be selected unambiguously
-    (reuse `suggestedRemote`).
+    <branch>` **only when** a push remote can be selected unambiguously:
+    - `branch.<name>.pushRemote`, or
+    - `remote.pushDefault`, or
+    - only configured remote.
   - Otherwise: return a clear error telling the user how to push
     and/or set upstream.
 - Optional: merge target resolution convenience (only if it doesn’t
@@ -64,32 +66,34 @@ Credit approach:
 - Use `Co-authored-by:` trailers in the porting commits (so JJ is visibly
   credited on GitHub).
 - Include a short “Ported from JJ fork” note listing the source commit
-  hashes (example: `1bc9103`, `6e33402`, `3abba26`) in the commit message
+  hashes (example: `93e99f3`) in the commit message
   body.
 
 ### Detailed steps
 
-- [ ] 007.1 Create an integration branch from `main` (recommended):
+- [x] 007.1 Create an integration branch from `main` (recommended):
   `git switch -c jj-fixed`.
-- [ ] 007.2 Codex ports code changes from `remotes/jj/main` into `main.go`
+- [x] 007.2 Codex ports code changes from `remotes/jj/main` into `main.go`
   (no cherry-pick).
-  - [ ] 007.2.1 Idempotent branch creation: if `<user>/<twig>` exists,
+  - [x] 007.2.1 Idempotent branch creation: if `<user>/<twig>` exists,
     switch to it; otherwise create it.
-  - [ ] 007.2.2 `ensureClean` output: accept `stdout io.Writer` and
+  - [x] 007.2.2 `ensureClean` output: accept `stdout io.Writer` and
     stop writing to `os.Stdout`.
-  - [ ] 007.2.3 Upstreamless push: implement a `smartPush` that:
-    - [ ] 007.2.3.1 Uses plain `git push` when upstream is set.
-    - [ ] 007.2.3.2 Uses `git push -u <remote> <branch>` only when
-      `suggestedRemote` returns a real remote (not `<remote>`).
-    - [ ] 007.2.3.3 Otherwise returns a human-readable error with
-      exact suggested `git push -u ...` command(s).
-  - [ ] 007.2.4 Merge target resolution: decide whether to support
-    shorthand (e.g. `bob/<twig>`) and implement only if deterministic.
-  - [ ] 007.2.5 Decide whether to add `*.lock` to `.gitignore`
-    (document why).
+  - [x] 007.2.3 Upstreamless push: implement a `smartPush` that:
+    - [x] 007.2.3.1 Uses plain `git push` when upstream is set.
+    - [x] 007.2.3.2 Uses `git push -u <remote> <branch>` only when the
+      push remote is unambiguous (`branch.<name>.pushRemote`, or
+      `remote.pushDefault`, or only remote).
+    - [x] 007.2.3.3 Otherwise returns a human-readable error with exact
+      suggested `git push -u ...` command(s).
+  - [x] 007.2.4 Merge target resolution: accept shorthand (e.g.
+    `bob/<twig>`) by auto-resolving to exactly-one `<remote>/bob/<twig>`
+    across remotes; ask for confirmation before merging.
+  - [x] 007.2.5 Add `*.lock` to `.gitignore` (note: this is broad; revisit
+    if we ever want to track something like `flake.lock`).
 - [ ] 007.3 Keep `usage.tmpl` and docs aligned with `main`’s decisions
   (no `$USER` or `origin` assumptions).
-- [ ] 007.4 Verify formatting + tests: `gofmt -w main.go` and `go test
+- [x] 007.4 Verify formatting + tests: `gofmt -w main.go` and `go test
   ./...`.
 - [ ] 007.5 Run system/manual harness (TODO 002) to validate the
   ported behaviors end-to-end.
