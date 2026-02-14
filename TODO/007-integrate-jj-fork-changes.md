@@ -85,6 +85,9 @@ review because docs/design regressions and fixes arrive interleaved.
   `git switch -c jj-fixes`.
 - [ ] 007.2 Port code changes from `remotes/jj/main` into `main.go`
   (either cherry-pick or manual).
+  - XXX i want codex to port the changes.  cherry-picking will create
+    a lot of conflicts and make it hard to reason about the changes.
+    LLM-based porting will be cleaner and easier to review.
   - [ ] 007.2.1 Idempotent branch creation: if `<user>/<twig>` exists,
     switch to it; otherwise create it.
   - [ ] 007.2.2 `ensureClean` output: accept `stdout io.Writer` and
