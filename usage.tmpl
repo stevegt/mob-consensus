@@ -60,7 +60,8 @@ Getting started (next group members):
        git push -u {{.Remote}} {{.UserBranch}}
   4) Use mob-consensus to converge:
        mob-consensus
-       mob-consensus {{.PeerRef}}
+       mob-consensus {{.PeerBranch}}
+       # (If {{.PeerBranch}} isn't a local ref, mob-consensus will try to resolve it to {{.PeerRef}} and ask for confirmation.)
 
 Commands:
   (no args)     Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).

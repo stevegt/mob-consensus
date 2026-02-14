@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
@@ -15,8 +16,6 @@ import (
 	"sort"
 	"strings"
 	"text/template"
-
-	. "github.com/stevegt/goadapt"
 )
 
 //go:embed usage.tmpl
@@ -119,12 +118,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	case opts.baseBranch != "":
 		return runCreateBranch(ctx, opts, user, stdout)
 	case opts.otherBranch == "":
-		err := gitRun(ctx, "fetch")
-		Ck(err)
+		if err := fetchSuggestedRemote(ctx, ""); err != nil {
+			return err
+		}
 		return runDiscovery(ctx, opts, currentBranch, stdout)
 	default:
-		err := gitRun(ctx, "fetch")
-		Ck(err)
+		if err := fetchSuggestedRemote(ctx, opts.otherBranch); err != nil {
+			return err
+		}
 		return runMerge(ctx, opts, currentBranch, stdout)
 	}
 }
@@ -262,18 +263,9 @@ func printUsage(ctx context.Context, w io.Writer) error {
 }
 
 func suggestedRemote(ctx context.Context) (string, []string, string) {
-	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	remotes, err := listRemotes(ctx)
 	if err != nil {
 		return "", nil, ""
-	}
-
-	var remotes []string
-	for _, line := range strings.Split(remotesOut, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		remotes = append(remotes, line)
 	}
 	if len(remotes) == 0 {
 		return "", nil, ""
@@ -296,6 +288,65 @@ func suggestedRemote(ctx context.Context) (string, []string, string) {
 	}
 
 	return "", remotes, ""
+}
+
+func listRemotes(ctx context.Context) ([]string, error) {
+	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	if err != nil {
+		return nil, err
+	}
+	if remotesOut == "" {
+		return nil, nil
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(remotesOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		remotes = append(remotes, line)
+	}
+	return remotes, nil
+}
+
+func fetchSuggestedRemote(ctx context.Context, otherBranch string) error {
+	remotes, err := listRemotes(ctx)
+	if err != nil {
+		return err
+	}
+	if len(remotes) == 0 {
+		return errors.New("mob-consensus: no remotes configured (hint: git remote -v)")
+	}
+
+	if otherBranch != "" {
+		if i := strings.IndexByte(otherBranch, '/'); i > 0 {
+			prefix := otherBranch[:i]
+			for _, r := range remotes {
+				if r == prefix {
+					return gitRun(ctx, "fetch", r)
+				}
+			}
+		}
+	}
+
+	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err == nil && upstream != "" {
+		if i := strings.IndexByte(upstream, '/'); i > 0 {
+			upstreamRemote := upstream[:i]
+			for _, r := range remotes {
+				if r == upstreamRemote {
+					return gitRun(ctx, "fetch", upstreamRemote)
+				}
+			}
+		}
+	}
+
+	if len(remotes) == 1 {
+		return gitRun(ctx, "fetch", remotes[0])
+	}
+
+	return fmt.Errorf("mob-consensus: multiple remotes configured (%s); set an upstream or fetch explicitly (e.g., git fetch <remote>)", strings.Join(remotes, ", "))
 }
 
 func branchUserFromEmail(ctx context.Context) (string, error) {
@@ -421,7 +472,21 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return err
 	}
 
-	mergeMsg, err := buildMergeMessage(ctx, opts.otherBranch, currentBranch)
+	otherBranch, changed, err := resolveMergeShorthand(ctx, opts.otherBranch)
+	if err != nil {
+		return err
+	}
+	if changed {
+		ok, err := confirm(fmt.Sprintf("Resolve %q to %q? [y/N] ", opts.otherBranch, otherBranch))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("mob-consensus: aborted")
+		}
+	}
+
+	mergeMsg, err := buildMergeMessage(ctx, otherBranch, currentBranch)
 	if err != nil {
 		return err
 	}
@@ -457,7 +522,7 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return err
 	}
 
-	mergeErr := gitRun(ctx, "merge", "--no-commit", "--no-ff", opts.otherBranch)
+	mergeErr := gitRun(ctx, "merge", "--no-commit", "--no-ff", otherBranch)
 	if mergeErr != nil {
 		if _, err := os.Stat(mergeHeadPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -503,6 +568,69 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return nil
 	}
 	return gitRun(ctx, "push")
+}
+
+func resolveMergeShorthand(ctx context.Context, otherBranch string) (string, bool, error) {
+	if otherBranch == "" {
+		return "", false, errors.New("mob-consensus: missing OTHER_BRANCH")
+	}
+	if refExists(ctx, otherBranch) {
+		return otherBranch, false, nil
+	}
+
+	if strings.Count(otherBranch, "/") != 1 {
+		return "", false, fmt.Errorf("mob-consensus: unknown branch: %s (hint: git fetch; git branch -a)", otherBranch)
+	}
+
+	remotes, err := listRemotes(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	if len(remotes) == 0 {
+		return "", false, fmt.Errorf("mob-consensus: unknown branch: %s (no remotes configured)", otherBranch)
+	}
+
+	if i := strings.IndexByte(otherBranch, '/'); i > 0 {
+		prefix := otherBranch[:i]
+		for _, r := range remotes {
+			if r == prefix {
+				return "", false, fmt.Errorf("mob-consensus: unknown branch: %s (hint: git fetch %s; git branch -a)", otherBranch, prefix)
+			}
+		}
+	}
+
+	var matches []string
+	for _, r := range remotes {
+		candidate := r + "/" + otherBranch
+		if refExists(ctx, candidate) {
+			matches = append(matches, candidate)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", false, fmt.Errorf("mob-consensus: unknown branch: %s (hint: git branch -a; try: git fetch <remote>)", otherBranch)
+	case 1:
+		return matches[0], true, nil
+	default:
+		return "", false, fmt.Errorf("mob-consensus: %s matches multiple remotes: %s (hint: use the full <remote>/%s)", otherBranch, strings.Join(matches, ", "), otherBranch)
+	}
+}
+
+func refExists(ctx context.Context, ref string) bool {
+	_, err := gitOutputTrimmed(ctx, "rev-parse", "--verify", ref)
+	return err == nil
+}
+
+func confirm(prompt string) (bool, error) {
+	fmt.Fprint(os.Stderr, prompt)
+	r := bufio.NewReader(os.Stdin)
+	line, err := r.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	line = strings.TrimSpace(line)
+	line = strings.ToLower(line)
+	return line == "y" || line == "yes", nil
 }
 
 func ensureClean(ctx context.Context, opts options, requireClean bool) error {
