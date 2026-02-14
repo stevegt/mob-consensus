@@ -18,7 +18,7 @@ High-conflict files:
 - `.gitignore`: JJ adds `*.lock`.
 - `TODO/TODO.md` and `TODO/00{1,2,3,4}.md`: JJ reorganizes TODOs and
   reverts some docs to `$USER`/`origin` assumptions.
-- `usage.tmpl` and `scripts/mc-init`: exist on `main` but are
+- `usage.tmpl` and `scripts/mc-test`: exist on `main` but are
   deleted/rewritten on JJ’s branch.
 
 Key design choice differences to preserve from `main`:
