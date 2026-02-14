@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	_ "embed"
@@ -333,13 +334,27 @@ func requireUserBranch(force bool, user, currentBranch string) error {
 }
 
 func runCreateBranch(ctx context.Context, opts options, user string, stdout io.Writer) error {
-	if err := ensureClean(ctx, opts, true); err != nil {
+	if err := ensureClean(ctx, opts, true, stdout); err != nil {
 		return err
 	}
 
 	twig := twigFromBranch(opts.baseBranch)
 	newBranch := user + "/" + twig
 	baseBranch := opts.baseBranch
+
+	existingBranches, err := gitOutput(ctx, "branch", "--list", newBranch)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(existingBranches) != "" {
+		if err := gitRun(ctx, "checkout", newBranch); err != nil {
+			return err
+		}
+		fmt.Fprintln(stdout)
+		fmt.Fprintln(stdout, "Next: push your branch when you're ready.")
+		return printPushAdvice(ctx, stdout, newBranch)
+	}
+
 	if err := gitRun(ctx, "checkout", "-b", newBranch, baseBranch); err != nil {
 		return err
 	}
@@ -367,7 +382,7 @@ func printPushAdvice(ctx context.Context, w io.Writer, branch string) error {
 
 func runDiscovery(ctx context.Context, opts options, currentBranch string, stdout io.Writer) error {
 	if opts.commitDirty {
-		if err := ensureClean(ctx, opts, false); err != nil {
+		if err := ensureClean(ctx, opts, false, stdout); err != nil {
 			return err
 		}
 	}
@@ -417,11 +432,25 @@ func diffStatusLine(branch, ahead, behind string) string {
 }
 
 func runMerge(ctx context.Context, opts options, currentBranch string, stdout io.Writer) error {
-	if err := ensureClean(ctx, opts, true); err != nil {
+	if err := ensureClean(ctx, opts, true, stdout); err != nil {
 		return err
 	}
 
-	mergeMsg, err := buildMergeMessage(ctx, opts.otherBranch, currentBranch)
+	mergeTarget, needsConfirm, err := resolveMergeTarget(ctx, opts.otherBranch)
+	if err != nil {
+		return err
+	}
+	if needsConfirm {
+		ok, err := confirm(os.Stdin, stdout, fmt.Sprintf("Resolved %q to %q. Merge this branch? [y/N]: ", opts.otherBranch, mergeTarget))
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errors.New("mob-consensus: merge aborted")
+		}
+	}
+
+	mergeMsg, err := buildMergeMessage(ctx, mergeTarget, currentBranch)
 	if err != nil {
 		return err
 	}
@@ -457,7 +486,7 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		return err
 	}
 
-	mergeErr := gitRun(ctx, "merge", "--no-commit", "--no-ff", opts.otherBranch)
+	mergeErr := gitRun(ctx, "merge", "--no-commit", "--no-ff", mergeTarget)
 	if mergeErr != nil {
 		if _, err := os.Stat(mergeHeadPath); err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -502,10 +531,10 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		fmt.Fprintln(stdout, "skipping automatic push -- don't forget to push later")
 		return nil
 	}
-	return gitRun(ctx, "push")
+	return smartPush(ctx)
 }
 
-func ensureClean(ctx context.Context, opts options, requireClean bool) error {
+func ensureClean(ctx context.Context, opts options, requireClean bool, stdout io.Writer) error {
 	status, err := gitOutputTrimmed(ctx, "status", "--porcelain")
 	if err != nil {
 		return err
@@ -514,7 +543,7 @@ func ensureClean(ctx context.Context, opts options, requireClean bool) error {
 		return nil
 	}
 
-	fmt.Fprintln(os.Stdout, "you have uncommitted changes")
+	fmt.Fprintln(stdout, "you have uncommitted changes")
 	if !opts.commitDirty {
 		if requireClean {
 			return errors.New("working tree is dirty (use -c to commit)")
@@ -531,7 +560,125 @@ func ensureClean(ctx context.Context, opts options, requireClean bool) error {
 	if opts.noPush {
 		return nil
 	}
-	return gitRun(ctx, "push")
+	return smartPush(ctx)
+}
+
+func smartPush(ctx context.Context) error {
+	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+	if err == nil && upstream != "" {
+		return gitRun(ctx, "push")
+	}
+
+	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return err
+	}
+	if currentBranch == "" || currentBranch == "HEAD" {
+		return errors.New("mob-consensus: cannot push from detached HEAD")
+	}
+
+	branchPushRemote, err := gitOutputTrimmed(ctx, "config", "--get", "branch."+currentBranch+".pushRemote")
+	if err == nil && branchPushRemote != "" {
+		return gitRun(ctx, "push", "-u", branchPushRemote, currentBranch)
+	}
+
+	pushDefault, err := gitOutputTrimmed(ctx, "config", "--get", "remote.pushDefault")
+	if err == nil && pushDefault != "" {
+		return gitRun(ctx, "push", "-u", pushDefault, currentBranch)
+	}
+
+	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	if err != nil {
+		return errors.New("mob-consensus: cannot push: no git remotes configured (hint: git remote -v)")
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(remotesOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		remotes = append(remotes, line)
+	}
+
+	if len(remotes) == 1 {
+		return gitRun(ctx, "push", "-u", remotes[0], currentBranch)
+	}
+
+	sort.Strings(remotes)
+	return fmt.Errorf(
+		"mob-consensus: cannot push: no upstream is set for branch %q and multiple remotes exist: %s (hint: git push -u <remote> %s; or: git config --local remote.pushDefault <remote>)",
+		currentBranch,
+		strings.Join(remotes, ", "),
+		currentBranch,
+	)
+}
+
+func resolveMergeTarget(ctx context.Context, otherBranch string) (string, bool, error) {
+	if _, err := gitOutput(ctx, "rev-parse", "--verify", otherBranch); err == nil {
+		return otherBranch, false, nil
+	}
+
+	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	if err != nil {
+		return "", false, fmt.Errorf("mob-consensus: branch %q not found locally and no remotes configured (hint: git remote -v)", otherBranch)
+	}
+
+	var remotes []string
+	for _, line := range strings.Split(remotesOut, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		remotes = append(remotes, line)
+	}
+	if len(remotes) == 0 {
+		return "", false, fmt.Errorf("mob-consensus: branch %q not found locally and no remotes configured (hint: git remote -v)", otherBranch)
+	}
+
+	var candidates []string
+	for _, remote := range remotes {
+		candidate := remote + "/" + otherBranch
+		if _, err := gitOutput(ctx, "rev-parse", "--verify", candidate); err == nil {
+			candidates = append(candidates, candidate)
+		}
+	}
+
+	switch len(candidates) {
+	case 1:
+		return candidates[0], true, nil
+	case 0:
+		sort.Strings(remotes)
+		return "", false, fmt.Errorf(
+			"mob-consensus: branch %q not found locally or on any remote (%s) (hint: git fetch --all; or use an explicit ref like <remote>/%s)",
+			otherBranch,
+			strings.Join(remotes, ", "),
+			otherBranch,
+		)
+	default:
+		sort.Strings(candidates)
+		return "", false, fmt.Errorf(
+			"mob-consensus: branch %q is ambiguous; found multiple candidates: %s (use an explicit ref)",
+			otherBranch,
+			strings.Join(candidates, ", "),
+		)
+	}
+}
+
+func confirm(in io.Reader, out io.Writer, prompt string) (bool, error) {
+	fmt.Fprint(out, prompt)
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	line = strings.TrimSpace(line)
+	switch strings.ToLower(line) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 func twigFromBranch(branch string) string {
