@@ -57,7 +57,7 @@ die() {
 
 run() {
   echo "+ $*" >&2
-  "$@"
+  "$@" 1>&2
 }
 
 repo_root() {
@@ -69,7 +69,9 @@ repo_root() {
 dir_is_empty() {
   local dir="$1"
   [[ -d "$dir" ]] || return 1
-  [[ -z "$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]]
+  local found
+  found="$(find "$dir" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" || return 1
+  [[ -z "$found" ]]
 }
 
 canonical_dir() {
@@ -264,6 +266,7 @@ cmd_harness() {
   printf '%s\n' "mc-test harness root (safe to delete)" >"$root/$root_marker"
 
   run git init --bare "$remote"
+  run git -C "$remote" symbolic-ref HEAD "refs/heads/$base"
 
   run git clone "$remote" "$root/seed"
   run git -C "$root/seed" config user.name Seed
@@ -276,7 +279,7 @@ cmd_harness() {
 
   echo "$prog: building mob-consensus from $src_root" >&2
   mkdir -p "$root/gocache" "$root/gomodcache"
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go build -mod=readonly -o "$mc_bin" .)
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go build -mod=readonly -o "$mc_bin" .) 1>&2
 
   if [[ "$noninteractive" == "1" ]]; then
     write_editor "$editor"
@@ -302,7 +305,7 @@ NONINTERACTIVE=$noninteractive
 EDITOR=$editor
 EOF
 
-  echo "$root"
+  printf '%s\n' "$root"
 }
 
 read_env() {
