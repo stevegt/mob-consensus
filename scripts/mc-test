@@ -32,13 +32,21 @@ Notes:
   - Safety: by default, 'init' refuses to touch repos that are not under a harness root.
     Use 'init --unsafe' only if you are sure REPO_PATH is a disposable test repo.
 
-Harness layout (ROOT):
-  ROOT/remote.git      bare remote
-  ROOT/seed            seed worktree
-  ROOT/<user>/         per-user clones (e.g. ROOT/alice)
-  ROOT/mob-consensus   built CLI binary used by scenarios
-  ROOT/mc-test.env     harness metadata (plain key=value, no shell eval)
-  ROOT/git-editor.sh   temporary editor for noninteractive commits
+Where it writes (harness layout): everything goes under the harness root ROOT:
+  - ROOT/remote.git (bare remote)
+  - ROOT/seed (seed worktree)
+  - ROOT/<user>/ (per-user clones, e.g. ROOT/alice)
+  - ROOT/mob-consensus (built binary used by scenarios)
+  - ROOT/mc-test.env, ROOT/git-editor.sh, ROOT/.mc-test-root (harness metadata + marker)
+  - ROOT/gocache, ROOT/gomodcache (Go build caches, so we don't write to your global caches)
+
+Safety checks:
+  - harness refuses to run unless ROOT is an empty directory (prevents accidentally writing into e.g. $HOME).
+  - harness and run refuse if ROOT is inside the mob-consensus source repo.
+  - run refuses unless ROOT/.mc-test-root exists.
+  - mc-test.env is parsed, not sourced (no shell-eval of attacker-controlled files).
+  - init refuses to touch repos not under a harness root unless you pass init --unsafe.
+  - Usernames and twig/base names are validated (git check-ref-format) and usernames are restricted to a simple safe pattern.
 EOF
 }
 
