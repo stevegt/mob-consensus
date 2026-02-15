@@ -99,11 +99,16 @@ Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
 ### Plan to raise coverage (beyond `mc-test` scenarios)
 
 - [ ] 010.11 Add Go tests that exercise real CLI paths via `run()` in a temp git repo:
-  - [ ] 010.11.1 `-h/--help` renders usage without error (in a temp repo with/without remotes).
-  - [ ] 010.11.2 `-b <base>` creates `<user>/<twig>` from local `<twig>` (create `twig` first) and prints push advice.
-  - [ ] 010.11.3 Discovery mode prints the expected status lines (ahead/behind/diverged/synced) for arranged histories.
-  - [ ] 010.11.4 Merge mode: clean merge creates a merge commit with `Co-authored-by:` trailers; repeat merge is a no-op success.
-  - [ ] 010.11.5 Error paths: missing `user.email`, detached HEAD, no remotes, and ambiguous remotes produce human-readable errors.
+  - [x] 010.11.1 `-h/--help` renders usage without error (in a temp repo with/without remotes).
+  - [x] 010.11.2 `-b <base>` creates `<user>/<twig>` from local `<twig>` (create `twig` first) and prints push advice.
+  - [x] 010.11.3 Discovery mode prints the expected status lines (ahead/behind/diverged/synced) for arranged histories.
+  - [x] 010.11.4 Merge mode: clean merge creates a merge commit with `Co-authored-by:` trailers; repeat merge is a no-op success.
+  - [ ] 010.11.5 Error paths produce human-readable errors:
+    - [x] 010.11.5.1 Missing `user.email`
+    - [x] 010.11.5.2 Detached HEAD
+    - [x] 010.11.5.3 No remotes
+    - [x] 010.11.5.4 Multiple remotes (push ambiguity)
+    - [ ] 010.11.5.5 Ambiguous merge target across remotes
 - [ ] 010.12 Extend `mc-test coverage` to optionally include system tests:
   - [ ] 010.12.1 Add `mc-test coverage --system` (or `--tags system`) to run `go test -tags=system -coverprofile=... ./...`.
   - [ ] 010.12.2 If we keep unit-only as the default, update usage text so users know the difference.

@@ -292,8 +292,8 @@ cmd_harness() {
   run git -C "$root/seed" push -u origin "$base"
 
   echo "$prog: building mob-consensus from $src_root" >&2
-  mkdir -p "$root/gocache" "$root/gomodcache"
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go build -mod=readonly -o "$mc_bin" .) 1>&2
+  mkdir -p "$root/gocache" "$root/gomodcache" "$root/gotmp"
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" go build -mod=readonly -o "$mc_bin" .) 1>&2
 
   if [[ "$noninteractive" == "1" ]]; then
     write_editor "$editor"
@@ -818,11 +818,11 @@ cmd_coverage() {
   echo "  $cov_zero" >&2
   echo "  $cov_low" >&2
 
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go test -coverprofile="$cov_out" ./...) 1>&2
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -html="$cov_out" -o "$cov_html") 1>&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go test -coverprofile="$cov_out" ./...) 1>&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -html="$cov_out" -o "$cov_html") 1>&2
 
   echo "+ (cd \"$src_root\" && env ... go tool cover -func=\"$cov_out\" >\"$cov_func\")" >&2
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -func="$cov_out" >"$cov_func") 2>&1
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -func="$cov_out" >"$cov_func") 2>&1
 
   awk '/^total:/ {print; found=1} END {if(!found) exit 1}' "$cov_func" >"$cov_total"
   awk '$1 != "total:" && $NF == "0.0%" {print}' "$cov_func" >"$cov_zero"

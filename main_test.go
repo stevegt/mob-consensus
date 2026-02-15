@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 )
@@ -104,6 +105,100 @@ func TestDiffStatusLine(t *testing.T) {
 		got := diffStatusLine(tt.branch, tt.ahead, tt.behind)
 		if got != tt.want {
 			t.Fatalf("diffStatusLine(%q,%q,%q)=%q, want %q", tt.branch, tt.ahead, tt.behind, got, tt.want)
+		}
+	}
+}
+
+func TestParseArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantHelp bool
+		wantOpts options
+		wantErr  bool
+	}{
+		{
+			name:     "empty",
+			args:     nil,
+			wantHelp: false,
+			wantOpts: options{},
+		},
+		{
+			name:     "help_short",
+			args:     []string{"-h"},
+			wantHelp: true,
+			wantOpts: options{},
+		},
+		{
+			name:     "help_long",
+			args:     []string{"--help"},
+			wantHelp: true,
+			wantOpts: options{},
+		},
+		{
+			name: "flags_and_other",
+			args: []string{"-F", "-c", "-n", "-b", "feature-x", "bob/feature-x"},
+			wantOpts: options{
+				force:       true,
+				baseBranch:  "feature-x",
+				noPush:      true,
+				commitDirty: true,
+				otherBranch: "bob/feature-x",
+			},
+		},
+		{
+			name:    "unknown_flag",
+			args:    []string{"--nope"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, help, err := parseArgs(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("parseArgs() err=%v, wantErr=%v", err, tt.wantErr)
+			}
+			if help != tt.wantHelp {
+				t.Fatalf("parseArgs() help=%v, want %v", help, tt.wantHelp)
+			}
+			if tt.wantErr {
+				return
+			}
+			if opts != tt.wantOpts {
+				t.Fatalf("parseArgs() opts=%+v, want %+v", opts, tt.wantOpts)
+			}
+		})
+	}
+}
+
+func TestConfirm(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		in   string
+		want bool
+	}{
+		{in: "y\n", want: true},
+		{in: "yes\n", want: true},
+		{in: "Y\n", want: true},
+		{in: "n\n", want: false},
+		{in: "\n", want: false},
+		{in: "y", want: true},       // EOF without newline
+		{in: "maybe", want: false},  // EOF without newline
+		{in: " yes ", want: true},   // whitespace + EOF
+		{in: "nope\n", want: false}, // unknown token
+	}
+
+	for _, tt := range tests {
+		got, err := confirm(strings.NewReader(tt.in), io.Discard, "prompt: ")
+		if err != nil {
+			t.Fatalf("confirm() err=%v", err)
+		}
+		if got != tt.want {
+			t.Fatalf("confirm(%q)=%v, want %v", tt.in, got, tt.want)
 		}
 	}
 }
