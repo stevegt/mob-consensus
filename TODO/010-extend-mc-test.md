@@ -70,7 +70,9 @@ We need two kinds of coverage:
 
 1) **Unit coverage** (fast): `go test -coverprofile=... ./...`
 - [x] 010.8 Add `mc-test coverage` to write `ROOT/coverage.out` and
-  `ROOT/coverage.html` (via `go tool cover -html`).
+  `ROOT/coverage.html` (via `go tool cover -html`), plus
+  `ROOT/coverage.func.txt` (via `go tool cover -func`) and derived
+  summaries (`coverage.total.txt`, `coverage.zero.txt`, `coverage.low.txt`).
 
 2) **System/integration coverage** (meaningful): execute `run()` paths
 while creating real repos.

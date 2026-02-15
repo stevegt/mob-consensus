@@ -19,7 +19,7 @@ Commands:
   harness  Create a local bare "remote", seed it, build mob-consensus, and clone N users.
   run      Run one scenario in an existing harness.
   all      Run harness + scenarios (bootstrap, join, discovery, merge, plus deeper checks).
-  coverage Write coverage reports under the harness root (coverage.out + coverage.html).
+  coverage Write coverage reports under the harness root (coverage.out, coverage.html, coverage.func.txt, coverage.total.txt, coverage.zero.txt, coverage.low.txt).
 
 Scenarios:
   bootstrap  First user creates/pushes shared twig and personal branch.
@@ -45,7 +45,9 @@ Where it writes (harness layout): everything goes under the harness root ROOT:
   - ROOT/<user>/ (per-user clones, e.g. ROOT/alice)
   - ROOT/mob-consensus (built binary used by scenarios)
   - ROOT/mc-test.env, ROOT/git-editor.sh, ROOT/.mc-test-root (harness metadata + marker)
+  - ROOT/coverage.out, ROOT/coverage.html, ROOT/coverage.func.txt, ROOT/coverage.total.txt, ROOT/coverage.zero.txt, ROOT/coverage.low.txt (coverage outputs)
   - ROOT/gocache, ROOT/gomodcache (Go build caches, so we don't write to your global caches)
+  - ROOT/gotmp (Go temp dir for builds/tools)
 
 Safety checks:
   - harness refuses to run unless ROOT is an empty directory (prevents accidentally writing into e.g. $HOME).
@@ -802,10 +804,29 @@ cmd_coverage() {
   mkdir -p "$root/gocache" "$root/gomodcache"
   local cov_out="$root/coverage.out"
   local cov_html="$root/coverage.html"
+  local cov_func="$root/coverage.func.txt"
+  local cov_total="$root/coverage.total.txt"
+  local cov_zero="$root/coverage.zero.txt"
+  local cov_low="$root/coverage.low.txt"
+  mkdir -p "$root/gotmp"
 
-  echo "$prog: writing coverage to $cov_out and $cov_html" >&2
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go test -mod=readonly -coverprofile="$cov_out" ./...) 1>&2
-  (cd "$src_root" && go tool cover -html="$cov_out" -o "$cov_html") 1>&2
+  echo "$prog: writing coverage to:" >&2
+  echo "  $cov_out" >&2
+  echo "  $cov_html" >&2
+  echo "  $cov_func" >&2
+  echo "  $cov_total" >&2
+  echo "  $cov_zero" >&2
+  echo "  $cov_low" >&2
+
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go test -coverprofile="$cov_out" ./...) 1>&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -html="$cov_out" -o "$cov_html") 1>&2
+
+  echo "+ (cd \"$src_root\" && env ... go tool cover -func=\"$cov_out\" >\"$cov_func\")" >&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -func="$cov_out" >"$cov_func") 2>&1
+
+  awk '/^total:/ {print; found=1} END {if(!found) exit 1}' "$cov_func" >"$cov_total"
+  awk '$1 != "total:" && $NF == "0.0%" {print}' "$cov_func" >"$cov_zero"
+  awk '$1 != "total:" && $NF ~ /%$/ {p=$NF; sub(/%$/, "", p); if(p+0 < 50.0) print}' "$cov_func" >"$cov_low"
 }
 
 cmd_run() {
