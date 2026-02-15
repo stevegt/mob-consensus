@@ -81,6 +81,31 @@ while creating real repos.
 - [ ] 010.10 Decide/record an initial minimum coverage target (start
   low, raise over time).
 
+### Current baseline (from `mc-test coverage`)
+
+Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
+
+- Coverage is **7.0%** overall (30/430 statements), and the only file
+  is `main.go` (7.0%).
+- Covered code is mostly the pure helpers:
+  `twigFromBranch`, `relatedBranches`, `coAuthorLines`,
+  `diffStatusLine`.
+- Most user-facing CLI behavior is currently uncovered in Go tests:
+  arg parsing, usage rendering, remote selection/fetching, branch
+  creation, discovery, merge paths, and `smartPush`.
+
+### Plan to raise coverage (beyond `mc-test` scenarios)
+
+- [ ] 010.11 Add Go tests that exercise real CLI paths via `run()` in a temp git repo:
+  - [ ] 010.11.1 `-h/--help` renders usage without error (in a temp repo with/without remotes).
+  - [ ] 010.11.2 `-b <base>` creates `<user>/<twig>` from local `<twig>` (create `twig` first) and prints push advice.
+  - [ ] 010.11.3 Discovery mode prints the expected status lines (ahead/behind/diverged/synced) for arranged histories.
+  - [ ] 010.11.4 Merge mode: clean merge creates a merge commit with `Co-authored-by:` trailers; repeat merge is a no-op success.
+  - [ ] 010.11.5 Error paths: missing `user.email`, detached HEAD, no remotes, and ambiguous remotes produce human-readable errors.
+- [ ] 010.12 Extend `mc-test coverage` to optionally include system tests:
+  - [ ] 010.12.1 Add `mc-test coverage --system` (or `--tags system`) to run `go test -tags=system -coverprofile=... ./...`.
+  - [ ] 010.12.2 If we keep unit-only as the default, update usage text so users know the difference.
+
 ## Notes / risks
 
 - Conflict merges are hard to automate unless we provide a

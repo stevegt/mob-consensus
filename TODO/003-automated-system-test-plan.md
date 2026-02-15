@@ -12,13 +12,18 @@ Constraints:
 - [ ] 003.4 Cover discovery mode output (ahead/behind/diverged/synced).
 - [ ] 003.5 Cover merge mode for clean/no-op merges (non-interactive).
 - [ ] 003.6 Add one “conflict merge fails cleanly” test (expected non-zero exit).
+- [ ] 003.7 Make system tests contribute to Go coverage (so `mc-test coverage --system` can report meaningful coverage for real workflows).
+- [ ] 003.8 Add a `scripts/mc-test coverage --system` mode that runs `go test -tags=system -coverprofile=... ./...` and writes `coverage.html`.
 
 ## Proposed structure
 
 - `system_test.go` (or `system/system_test.go`) guarded by a build tag:
   - `//go:build system`
   - Run with: `go test -tags=system ./...`
-- Use `exec.Command` to run `git` and the built `mob-consensus` binary with `cmd.Dir` pointing at each clone.
+- Prefer calling `run(ctx, args, stdout, stderr)` **in-process** so the tests count toward `-coverprofile`.
+  - Note: current code shells out to `git` without setting `cmd.Dir`, so in-process tests will need to `os.Chdir(repoDir)` (serial tests),
+    or we should refactor git helpers to accept a repo dir (better long-term).
+- Use `exec.Command` to run `git` with `cmd.Dir` pointing at each clone.
 - Use `t.TempDir()` and a **local bare repo** as `origin` to avoid network/credentials.
 
 ## Making merge mode non-interactive (without new flags)
