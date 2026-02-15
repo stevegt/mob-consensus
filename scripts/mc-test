@@ -804,7 +804,7 @@ cmd_coverage() {
   local cov_html="$root/coverage.html"
 
   echo "$prog: writing coverage to $cov_out and $cov_html" >&2
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go test -coverprofile="$cov_out" ./...) 1>&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go test -mod=readonly -coverprofile="$cov_out" ./...) 1>&2
   (cd "$src_root" && go tool cover -html="$cov_out" -o "$cov_html") 1>&2
 }
 

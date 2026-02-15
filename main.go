@@ -639,7 +639,7 @@ func smartPush(ctx context.Context) error {
 
 	remotesOut, err := gitOutputTrimmed(ctx, "remote")
 	if err != nil {
-		return errors.New("mob-consensus: cannot push: no git remotes configured (hint: git remote -v)")
+		return fmt.Errorf("mob-consensus: cannot list git remotes: %w", err)
 	}
 
 	var remotes []string
@@ -651,6 +651,9 @@ func smartPush(ctx context.Context) error {
 		remotes = append(remotes, line)
 	}
 
+	if len(remotes) == 0 {
+		return errors.New("mob-consensus: cannot push: no git remotes configured (hint: git remote -v)")
+	}
 	if len(remotes) == 1 {
 		return gitRun(ctx, "push", "-u", remotes[0], currentBranch)
 	}
