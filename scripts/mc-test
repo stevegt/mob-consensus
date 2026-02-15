@@ -12,18 +12,25 @@ Usage:
   mc-test harness [--root DIR] [--users "alice bob carol"] [--twig TWIG] [--base BRANCH] [--noninteractive|--interactive]
   mc-test run --root DIR [--scenario SCENARIO] [--users "alice bob carol"] [--twig TWIG] [--base BRANCH] [--noninteractive|--interactive]
   mc-test all [--root DIR] [--users "alice bob carol"] [--twig TWIG] [--base BRANCH] [--noninteractive|--interactive]
+  mc-test coverage --root DIR
 
 Commands:
   init     Configure repo-local git identity for a simulated user.
   harness  Create a local bare "remote", seed it, build mob-consensus, and clone N users.
   run      Run one scenario in an existing harness.
-  all      Run harness + scenarios (bootstrap, join, discovery, merge).
+  all      Run harness + scenarios (bootstrap, join, discovery, merge, plus deeper checks).
+  coverage Write coverage reports under the harness root (coverage.out + coverage.html).
 
 Scenarios:
   bootstrap  First user creates/pushes shared twig and personal branch.
   join       Other users join from the shared twig and push their personal branches.
   discovery  Create commits and assert ahead/behind/diverged output.
   merge      Run a clean merge and then a no-op merge (with confirmation).
+  branch     Exercise `-b` idempotency and push advice.
+  dirty      Exercise dirty-tree failures and `-c` auto-commit flow.
+  smartpush  Exercise upstreamless push behavior (single vs multiple remotes).
+  multiremote-fetch  Exercise fetch selection and ambiguity errors.
+  converge   Multi-user file edits + merges; verify final trees have no diffs.
 
 Notes:
   - USERNAME must not contain '@'. Email is set to USERNAME@example.com.
@@ -58,6 +65,11 @@ die() {
 run() {
   echo "+ $*" >&2
   "$@" 1>&2
+}
+
+run_maybe() {
+  echo "+ $*" >&2
+  "$@" 1>&2 || true
 }
 
 repo_root() {
@@ -380,6 +392,27 @@ assert_branch() {
   fi
 }
 
+assert_clean() {
+  local repo_path="$1"
+  local st
+  st="$(git -C "$repo_path" status --porcelain)"
+  if [[ -n "$st" ]]; then
+    echo "$prog: expected clean worktree in $repo_path, but got:" >&2
+    echo "$st" >&2
+    exit 1
+  fi
+}
+
+assert_file() {
+  local file_path="$1"
+  [[ -f "$file_path" ]] || die "expected file to exist: $file_path"
+}
+
+assert_dir() {
+  local dir_path="$1"
+  [[ -d "$dir_path" ]] || die "expected directory to exist: $dir_path"
+}
+
 scenario_bootstrap() {
   local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
   local mc_bin="$root/mob-consensus"
@@ -486,6 +519,295 @@ scenario_merge() {
   run mc_run_confirm "$root/$leader" "$mc_bin" "$editor" "$noninteractive" "$other/$twig"
 }
 
+scenario_branch() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+  local leader_repo="$root/$leader"
+
+  echo "$prog: branch (-b idempotent + push advice)" >&2
+
+  run git -C "$leader_repo" switch "$twig"
+  local out
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  assert_branch "$leader_repo" "$leader/$twig"
+  assert_contains "$out" "git push -u origin $leader/$twig"
+
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  assert_branch "$leader_repo" "$leader/$twig"
+
+  # Force ambiguous push advice: 2 remotes + no upstream.
+  run_maybe git -C "$leader_repo" remote remove jj
+  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run_maybe git -C "$leader_repo" branch --unset-upstream
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  assert_contains "$out" "git push -u <remote> $leader/$twig"
+  assert_contains "$out" "Available remotes:"
+
+  run git -C "$leader_repo" fetch origin
+  run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
+  run git -C "$leader_repo" remote remove jj
+}
+
+scenario_dirty() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+
+  local other=""
+  for u in $users; do
+    if [[ "$u" != "$leader" ]]; then
+      other="$u"
+      break
+    fi
+  done
+  if [[ -z "$other" ]]; then
+    die "dirty scenario needs at least 2 users"
+  fi
+
+  local leader_repo="$root/$leader"
+  local other_repo="$root/$other"
+
+  echo "$prog: dirty (dirty-tree failures + -c)" >&2
+
+  # Ensure there's something to merge.
+  run git -C "$other_repo" switch "$other/$twig"
+  assert_dir "$other_repo"
+  mkdir -p "$other_repo/dirty"
+  echo "dirty-test other change" >"$other_repo/dirty/$other.txt"
+  run git -C "$other_repo" add "dirty/$other.txt"
+  run git -C "$other_repo" commit -m "Dirty test change ($other)"
+  run git -C "$other_repo" push
+
+  run git -C "$leader_repo" switch "$leader/$twig"
+  echo "dirty-test leader uncommitted change" >>"$leader_repo/README.md"
+
+  local out
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig" 2>&1)"; then
+    die "expected mob-consensus merge to fail on dirty tree"
+  fi
+  assert_contains "$out" "dirty"
+
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -c "origin/$other/$twig"
+  assert_clean "$leader_repo"
+
+  local subjects
+  subjects="$(git -C "$leader_repo" log -2 --pretty=%s)"
+  assert_contains "$subjects" "mc-test auto commit"
+  assert_contains "$subjects" "mob-consensus merge from"
+}
+
+scenario_smartpush() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+
+  local other=""
+  for u in $users; do
+    if [[ "$u" != "$leader" ]]; then
+      other="$u"
+      break
+    fi
+  done
+  if [[ -z "$other" ]]; then
+    die "smartpush scenario needs at least 2 users"
+  fi
+
+  local leader_repo="$root/$leader"
+  local other_repo="$root/$other"
+
+  echo "$prog: smartpush (upstreamless push behavior)" >&2
+
+  run_maybe git -C "$leader_repo" remote remove jj
+
+  # Case 1: single remote, no upstream -> push -u should set upstream.
+  run git -C "$leader_repo" switch "$leader/$twig"
+  run_maybe git -C "$leader_repo" branch --unset-upstream
+
+  run git -C "$other_repo" switch "$other/$twig"
+  mkdir -p "$other_repo/smartpush"
+  echo "smartpush case1 ($other)" >"$other_repo/smartpush/case1.txt"
+  run git -C "$other_repo" add "smartpush/case1.txt"
+  run git -C "$other_repo" commit -m "Smartpush case1 ($other)"
+  run git -C "$other_repo" push
+
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig"
+  run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
+
+  # Case 2: multiple remotes, no upstream, no pushDefault -> smartPush should error.
+  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run_maybe git -C "$leader_repo" branch --unset-upstream
+  git -C "$leader_repo" config --local --unset remote.pushDefault 2>/dev/null || true
+  git -C "$leader_repo" config --local --unset "branch.$leader/$twig.pushRemote" 2>/dev/null || true
+
+  run git -C "$other_repo" switch "$other/$twig"
+  echo "smartpush case2 ($other)" >"$other_repo/smartpush/case2.txt"
+  run git -C "$other_repo" add "smartpush/case2.txt"
+  run git -C "$other_repo" commit -m "Smartpush case2 ($other)"
+  run git -C "$other_repo" push
+
+  local out
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig" 2>&1)"; then
+    die "expected smartPush to fail with multiple remotes and no upstream"
+  fi
+  assert_contains "$out" "cannot push"
+  assert_contains "$out" "multiple remotes"
+  assert_contains "$out" "git push -u <remote>"
+
+  # Fix: configure remote.pushDefault and ensure the next merge pushes successfully.
+  run git -C "$leader_repo" config --local remote.pushDefault origin
+  run_maybe git -C "$leader_repo" branch --unset-upstream
+
+  run git -C "$other_repo" switch "$other/$twig"
+  echo "smartpush case2b ($other)" >"$other_repo/smartpush/case2b.txt"
+  run git -C "$other_repo" add "smartpush/case2b.txt"
+  run git -C "$other_repo" commit -m "Smartpush case2b ($other)"
+  run git -C "$other_repo" push
+
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig"
+  run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
+
+  run_maybe git -C "$leader_repo" config --local --unset remote.pushDefault
+  run git -C "$leader_repo" remote remove jj
+}
+
+scenario_multiremote_fetch() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+  local leader_repo="$root/$leader"
+
+  echo "$prog: multiremote-fetch (fetch selection + ambiguity errors)" >&2
+
+  run git -C "$leader_repo" switch "$leader/$twig"
+  run_maybe git -C "$leader_repo" remote remove jj
+  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run_maybe git -C "$leader_repo" branch --unset-upstream
+
+  local out
+  if out="$( (cd "$leader_repo" && "$mc_bin") 2>&1 )"; then
+    die "expected discovery to fail with multiple remotes and no upstream"
+  fi
+  assert_contains "$out" "multiple remotes"
+
+  run git -C "$leader_repo" fetch origin
+  run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
+  out="$( (cd "$leader_repo" && "$mc_bin") 2>&1 )"
+  assert_contains "$out" "Related branches and their diffs"
+
+  run git -C "$leader_repo" remote remove jj
+}
+
+scenario_converge() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+  local leader_repo="$root/$leader"
+
+  local others=()
+  for u in $users; do
+    if [[ "$u" == "$leader" ]]; then
+      continue
+    fi
+    others+=("$u")
+  done
+  if [[ ${#others[@]} -lt 1 ]]; then
+    die "converge scenario needs at least 2 users"
+  fi
+
+  echo "$prog: converge (multi-user file edits + merges)" >&2
+
+  # Each user makes a real file change and pushes.
+  for u in $users; do
+    local repo="$root/$u"
+    run git -C "$repo" switch "$u/$twig"
+    mkdir -p "$repo/converge"
+    echo "hello from $u" >"$repo/converge/$u.txt"
+    run git -C "$repo" add "converge/$u.txt"
+    run git -C "$repo" commit -m "Converge change ($u)"
+    run git -C "$repo" push
+  done
+
+  # Leader merges each other user branch onto the leader branch.
+  run git -C "$leader_repo" switch "$leader/$twig"
+  for u in "${others[@]}"; do
+    run mc_run_confirm "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "$u/$twig"
+    assert_file "$leader_repo/converge/$u.txt"
+  done
+
+  # Others merge the leader branch; trees should converge.
+  for u in "${others[@]}"; do
+    local repo="$root/$u"
+    run git -C "$repo" switch "$u/$twig"
+    run mc_run_confirm "$repo" "$mc_bin" "$editor" "$noninteractive" "$leader/$twig"
+    for peer in $users; do
+      assert_file "$repo/converge/$peer.txt"
+    done
+  done
+
+  for peer in $users; do
+    assert_file "$leader_repo/converge/$peer.txt"
+  done
+
+  # Verify each user's discovery output reports no diffs vs peers (synced).
+  for u in $users; do
+    local repo="$root/$u"
+    run git -C "$repo" switch "$u/$twig"
+    local out
+    out="$( (cd "$repo" && "$mc_bin") 2>&1 )"
+    for peer in $users; do
+      if [[ "$peer" == "$u" ]]; then
+        continue
+      fi
+      assert_contains "$out" "remotes/origin/$peer/$twig is synced"
+    done
+  done
+}
+
+cmd_coverage() {
+  local root=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --root)
+        root="${2:-}"; shift 2 ;;
+      -h|--help)
+        usage; exit 0 ;;
+      *)
+        die "unknown coverage flag: $1" ;;
+    esac
+  done
+
+  if [[ -z "$root" ]]; then
+    die "--root is required for coverage"
+  fi
+  if [[ ! -d "$root" ]]; then
+    die "root does not exist: $root"
+  fi
+
+  root="$(canonical_dir "$root")"
+  [[ -f "$root/$root_marker" ]] || die "not a harness root (missing $root/$root_marker): $root"
+  read_env "$root"
+
+  local src_root
+  src_root="$(canonical_dir "$(repo_root)")"
+  if [[ "$root" == "$src_root" || "$root" == "$src_root/"* ]]; then
+    die "--root must not be inside the mob-consensus source repo ($src_root)"
+  fi
+
+  mkdir -p "$root/gocache" "$root/gomodcache"
+  local cov_out="$root/coverage.out"
+  local cov_html="$root/coverage.html"
+
+  echo "$prog: writing coverage to $cov_out and $cov_html" >&2
+  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" go test -coverprofile="$cov_out" ./...) 1>&2
+  (cd "$src_root" && go tool cover -html="$cov_out" -o "$cov_html") 1>&2
+}
+
 cmd_run() {
   local root=""
   local users=""
@@ -563,6 +885,11 @@ cmd_run() {
       scenario_join "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_discovery "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_merge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_dirty "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_smartpush "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_multiremote_fetch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_converge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       ;;
     bootstrap)
       scenario_bootstrap "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
@@ -575,6 +902,21 @@ cmd_run() {
       ;;
     merge)
       scenario_merge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    branch)
+      scenario_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    dirty)
+      scenario_dirty "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    smartpush)
+      scenario_smartpush "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    multiremote-fetch)
+      scenario_multiremote_fetch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    converge)
+      scenario_converge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       ;;
     *)
       die "unknown scenario: $scenario"
@@ -633,6 +975,8 @@ main() {
       cmd_run "$@" ;;
     all)
       cmd_all "$@" ;;
+    coverage)
+      cmd_coverage "$@" ;;
     *)
       if [[ $# -eq 1 ]]; then
         # Back-compat: mc-test REPO_PATH USERNAME

@@ -43,22 +43,23 @@ and produce a repeatable coverage report.
 ## Plan (extend `scripts/mc-test`)
 
 - [ ] 010.1 Add scenario coverage matrix in `scripts/mc-test --help` (brief list of scenarios and what they assert).
-- [ ] 010.2 Add scenario `branch`:
-  - [ ] 010.2.1 Run `mob-consensus -b <twig>` twice; assert branch unchanged and no error.
-  - [ ] 010.2.2 Verify push advice contains the selected remote or a placeholder when ambiguous.
-- [ ] 010.3 Add scenario `dirty`:
-  - [ ] 010.3.1 Make an uncommitted change; run `mob-consensus -b <twig>`; assert non-zero + “dirty” message.
-  - [ ] 010.3.2 Repeat with `-c`; assert a commit is created (and pushed unless `-n`).
-- [ ] 010.4 Add scenario `smartpush`:
-  - [ ] 010.4.1 No upstream + single remote: after merge/commit, assert `-u` upstream gets set.
-  - [ ] 010.4.2 Add a second remote (e.g. `jj`) and assert `smartPush` errors until `remote.pushDefault` or `branch.<name>.pushRemote` is configured.
+- [x] 010.2 Add scenario `branch`:
+  - [x] 010.2.1 Run `mob-consensus -b <twig>` twice; assert branch unchanged and no error.
+  - [x] 010.2.2 Verify push advice contains the selected remote or a placeholder when ambiguous.
+- [x] 010.3 Add scenario `dirty`:
+  - [x] 010.3.1 Make an uncommitted tracked change; run `mob-consensus OTHER_BRANCH`; assert non-zero + “dirty” message.
+  - [x] 010.3.2 Repeat with `-c`; assert an auto-commit is created before the merge and the worktree ends clean.
+- [x] 010.4 Add scenario `smartpush`:
+  - [x] 010.4.1 No upstream + single remote: after merge/commit, assert `-u` upstream gets set.
+  - [x] 010.4.2 Add a second remote (e.g. `jj`) and assert `smartPush` errors until `remote.pushDefault` or `branch.<name>.pushRemote` is configured.
 - [ ] 010.5 Add scenario `multi-remote-fetch`:
-  - [ ] 010.5.1 With 2 remotes and no upstream, assert discovery/merge fails with a clear “multiple remotes” error.
-  - [ ] 010.5.2 With upstream set, assert the chosen remote is fetched and merge/discovery proceed.
-- [ ] 010.6 Add scenario `converge` (real multi-user workflow):
-  - [ ] 010.6.1 Each user makes at least one commit touching real files (not just empty commits) and pushes.
-  - [ ] 010.6.2 Users merge each other (at least 2 merges per user) and push.
-  - [ ] 010.6.3 Final discovery output on each user shows all related branches are `synced`.
+  - [x] 010.5.1 With 2 remotes and no upstream, assert discovery fails with a clear “multiple remotes” error.
+  - [x] 010.5.2 With upstream set, assert discovery proceeds.
+  - [ ] 010.5.3 Add merge-mode coverage under multi-remote setups (both “ambiguous remotes” errors and “explicit remote works”).
+- [x] 010.6 Add scenario `converge` (real multi-user workflow):
+  - [x] 010.6.1 Each user makes at least one commit touching real files (not just empty commits) and pushes.
+  - [x] 010.6.2 Leader merges peers; peers merge leader; everyone pushes.
+  - [x] 010.6.3 Final discovery output on each user reports peer branches are `synced`.
 - [ ] 010.7 Add conflict coverage (two tiers):
   - [ ] 010.7.1 Automated: configure a non-interactive `mergetool.vimdiff.cmd` that resolves deterministically (e.g., choose “theirs”) so CI can exercise the conflict path without opening editors.
   - [ ] 010.7.2 Manual: add a `--interactive` recipe that intentionally creates a conflict and documents the expected UX (mergetool + difftool + commit).
@@ -68,7 +69,7 @@ and produce a repeatable coverage report.
 We need two kinds of coverage:
 
 1) **Unit coverage** (fast): `go test -coverprofile=... ./...`
-- [ ] 010.8 Add `mc-test coverage` to write `ROOT/coverage.out` and
+- [x] 010.8 Add `mc-test coverage` to write `ROOT/coverage.out` and
   `ROOT/coverage.html` (via `go tool cover -html`).
 
 2) **System/integration coverage** (meaningful): execute `run()` paths
