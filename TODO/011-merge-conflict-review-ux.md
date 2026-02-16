@@ -69,66 +69,7 @@ We need a stance on how tools are selected:
 
 - Explicit confirmation after review: show summary + ask “Commit this merge?”
   (and optionally “Push now?”).
-- LLM-assisted review (optional):
-  - Feed `git diff --stat`, `git diff`, and/or conflict summaries to an LLM to
-    produce a short “what changed” explanation and ask for approval.
-  - Also useful for generating merge commit messages (already planned).
-  - Concerns: privacy, secrets in diffs, network dependency/cost; must be
-    opt-in with clear warnings and local/offline options where possible.
-
-## LLM-first interactive review (human-in-the-loop)
-
-Idea: the “right” tool here might not be `difftool` at all. Instead, when a
-merge completes (clean or conflicted), `mob-consensus` could drive a Codex-like
-interactive review loop:
-
-- Collect the change set (`git diff --name-status`, `git diff --stat`,
-  `git diff` vs `HEAD`, and conflict markers/status if present).
-- Present diffs one file at a time (or chunked by directory/area), and ask the
-  user to:
-  - approve this file’s change,
-  - open the file in their editor of choice to edit/fix,
-  - ask for an explanation of what the change does and why,
-  - ask “how does this fit into the larger context of the repo/code?”,
-  - or abort.
-- Only once every touched file is approved (or explicitly skipped) should we
-  commit (and then optionally push).
-
-Motivation: in an AI-assisted development process, the human’s core job shifts
-to *review and testing* (“we’re all testers now”). A human-in-the-loop approval
-gate (review each change before it lands) is a quality lever; the AI/agent does
-the heavy lifting, but a human reviewer must be able to inspect and approve
-each change before it is merged.
-
-Also: one or more collaborators may themselves be AI agents. That suggests the
-workflow should support both:
-- interactive “human reviewer” approval, and
-- a non-interactive mode suitable for agent orchestration (but still with an
-  explicit approval gate for commits/pushes in human-facing workflows).
-
-### Pros
-- Removes the hard dependency on mergetool/difftool configuration (works on
-  headless systems).
-- Avoids duplicate review (conflict resolution + final diff) by treating review
-  as a single, structured step.
-- Creates a consistent review UI regardless of editor/tooling.
-
-### Cons / risks
-- Privacy & secrets: diffs may contain sensitive data; must be opt-in and make
-  it obvious what is being sent where.
-- Prompt injection: diff content can be adversarial; the LLM must not be allowed
-  to “self-approve” or bypass confirmations.
-- Cost/latency/network: remote LLM calls may be slow/expensive/unavailable.
-- Incorrect summaries: the LLM can be wrong; UI must encourage checking the raw
-  diff and/or opening the file.
-
-### Alternatives / hybrids
-- Keep `difftool`/`mergetool`, but add an LLM “review assistant” that summarizes
-  diffs and asks for explicit approval (or offers to open an editor) before
-  committing.
-- Keep LLMs out of the critical path: provide an offline TUI review flow that
-  pages diffs (`git diff`) and launches `$EDITOR`, and later add optional LLM
-  summaries.
+- LLM-assisted review and human-in-the-loop approval: see TODO 012.
 
 ## Plan
 
@@ -141,10 +82,7 @@ workflow should support both:
 - [ ] 011.5 Extend tests:
   - [ ] 011.5.1 Non-interactive conflict-path test in `go test` (scripted mergetool).
   - [ ] 011.5.2 Manual `mc-test --interactive` recipe for real tool UX.
-- [ ] 011.6 Design an interactive “review & approve” loop:
-  - [ ] 011.6.1 Decide what constitutes “approved” (per file? per hunk? per commit?).
-  - [ ] 011.6.2 Decide what commands are shown (raw `git diff` vs summarized views).
-  - [ ] 011.6.3 Decide how the user edits: `$EDITOR`/`git add -p`/re-run merge tools.
-- [ ] 011.7 Add an optional LLM integration for explanations + commit-message drafting:
-  - [ ] 011.7.1 Define config surface (opt-in, provider, model, privacy policy).
-  - [ ] 011.7.2 Ensure the LLM cannot bypass confirmations or push without approval.
+
+Related: TODO 012 covers LLM-first interactive review and explicit human approval
+gates (“we’re all testers now”), including the fact that one or more
+collaborators may be AI agents.

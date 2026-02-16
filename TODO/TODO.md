@@ -5,6 +5,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [x] 004 - Per-repo test user init script (`TODO/004-per-repo-test-user-script.md`)
 - [ ] 010 - Extend mc-test for deeper system coverage (`TODO/010-extend-mc-test.md`)
 - [ ] 011 - Improve merge-conflict review UX (`TODO/011-merge-conflict-review-ux.md`)
+- [ ] 012 - LLM-assisted review and human approval (`TODO/012-llm-assisted-review-and-approval.md`)
 - [ ] 002 - System test harness + manual plan (`TODO/002-system-test-harness.md`)
 - [ ] 003 - Automated system testing plan (`TODO/003-automated-system-test-plan.md`)
 - [ ] 007 - Integrate JJ fork changes (`TODO/007-integrate-jj-fork-changes.md`)
