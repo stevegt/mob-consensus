@@ -108,7 +108,7 @@ Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
     - [x] 010.11.5.2 Detached HEAD
     - [x] 010.11.5.3 No remotes
     - [x] 010.11.5.4 Multiple remotes (push ambiguity)
-    - [ ] 010.11.5.5 Ambiguous merge target across remotes
+    - [x] 010.11.5.5 Ambiguous merge target across remotes
 - [ ] 010.12 Extend `mc-test coverage` to optionally include system tests:
   - [ ] 010.12.1 Add `mc-test coverage --system` (or `--tags system`) to run `go test -tags=system -coverprofile=... ./...`.
   - [ ] 010.12.2 If we keep unit-only as the default, update usage text so users know the difference.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -200,5 +201,43 @@ func TestConfirm(t *testing.T) {
 		if got != tt.want {
 			t.Fatalf("confirm(%q)=%v, want %v", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestUsageErrorUnwrap(t *testing.T) {
+	t.Parallel()
+
+	underlying := errors.New("underlying")
+	err := usageError{Err: underlying}
+
+	if got := errors.Unwrap(err); got != underlying {
+		t.Fatalf("errors.Unwrap(usageError)=%v, want %v", got, underlying)
+	}
+	if !errors.Is(err, underlying) {
+		t.Fatalf("errors.Is(usageError, underlying)=false, want true")
+	}
+}
+
+func TestPrintErrorNil(t *testing.T) {
+	t.Parallel()
+
+	var out strings.Builder
+	printError(&out, nil)
+	if got := out.String(); got != "" {
+		t.Fatalf("printError(nil)=%q, want empty string", got)
+	}
+}
+
+func TestRequireUserBranch(t *testing.T) {
+	t.Parallel()
+
+	if err := requireUserBranch(true, "alice", "main"); err != nil {
+		t.Fatalf("requireUserBranch(force=true) err=%v, want nil", err)
+	}
+	if err := requireUserBranch(false, "alice", "alice/feature-x"); err != nil {
+		t.Fatalf("requireUserBranch(on user branch) err=%v, want nil", err)
+	}
+	if err := requireUserBranch(false, "alice", "bob/feature-x"); err == nil {
+		t.Fatalf("requireUserBranch(on non-user branch) err=nil, want error")
 	}
 }

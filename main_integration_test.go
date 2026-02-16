@@ -149,6 +149,27 @@ func withCwd(t *testing.T, dir string) {
 	})
 }
 
+func withStdin(t *testing.T, input string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	if _, err := w.WriteString(input); err != nil {
+		_ = r.Close()
+		_ = w.Close()
+		t.Fatalf("write stdin: %v", err)
+	}
+	_ = w.Close()
+
+	old := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = old
+		_ = r.Close()
+	})
+}
+
 func initRepo(t *testing.T) string {
 	t.Helper()
 	requireGit(t)
@@ -609,5 +630,243 @@ func TestGitOutputErrorIncludesStderr(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "fatal:") {
 		t.Fatalf("expected fatal message in error: %v", err)
+	}
+}
+
+func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+	writeFile(t, seed, "bob.txt", "hello from bob\n")
+	gitCmd(t, seed, "add", "bob.txt")
+	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
+
+	alice := initRepo(t)
+	gitCmd(t, alice, "remote", "add", "origin", origin)
+	gitCmd(t, alice, "fetch", "origin")
+	withCwd(t, alice)
+
+	ctx := context.Background()
+
+	{
+		got, needsConfirm, err := resolveMergeTarget(ctx, "bob/feature-x")
+		if err != nil {
+			t.Fatalf("resolveMergeTarget err=%v", err)
+		}
+		if !needsConfirm {
+			t.Fatalf("expected remote resolution to require confirmation")
+		}
+		if got != "origin/bob/feature-x" {
+			t.Fatalf("resolveMergeTarget=%q, want %q", got, "origin/bob/feature-x")
+		}
+	}
+
+	{
+		_, _, err := resolveMergeTarget(ctx, "nobody/feature-x")
+		if err == nil || !strings.Contains(err.Error(), "not found locally or on any remote") {
+			t.Fatalf("expected not-found error, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "origin") {
+			t.Fatalf("expected error to mention origin, got: %v", err)
+		}
+	}
+
+	jj := initBareRemote(t)
+	gitCmd(t, seed, "remote", "add", "jj", jj)
+	gitCmd(t, seed, "push", "-u", "jj", "main")
+	gitCmd(t, seed, "push", "-u", "jj", "bob/feature-x")
+
+	gitCmd(t, alice, "remote", "add", "jj", jj)
+	gitCmd(t, alice, "fetch", "jj")
+
+	{
+		_, _, err := resolveMergeTarget(ctx, "bob/feature-x")
+		if err == nil || !strings.Contains(err.Error(), "ambiguous") {
+			t.Fatalf("expected ambiguous error, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "origin/bob/feature-x") || !strings.Contains(err.Error(), "jj/bob/feature-x") {
+			t.Fatalf("expected ambiguous error to include both candidates, got: %v", err)
+		}
+	}
+}
+
+func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+	writeFile(t, seed, "bob.txt", "hello from bob\n")
+	gitCmd(t, seed, "add", "bob.txt")
+	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
+
+	{
+		alice := initRepo(t)
+		gitCmd(t, alice, "remote", "add", "origin", origin)
+		gitCmd(t, alice, "fetch", "origin")
+		gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "main")
+		withCwd(t, alice)
+		withStdin(t, "n\n")
+
+		var out bytes.Buffer
+		err := runMerge(context.Background(), options{otherBranch: "bob/feature-x", noPush: true}, "alice/feature-x", &out)
+		if err == nil || !strings.Contains(err.Error(), "merge aborted") {
+			t.Fatalf("expected merge aborted error, got: %v", err)
+		}
+	}
+
+	{
+		alice := initRepo(t)
+		gitCmd(t, alice, "remote", "add", "origin", origin)
+		gitCmd(t, alice, "fetch", "origin")
+		gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "main")
+		withCwd(t, alice)
+		withStdin(t, "y\n")
+
+		var out bytes.Buffer
+		if err := runMerge(context.Background(), options{otherBranch: "bob/feature-x", noPush: true}, "alice/feature-x", &out); err != nil {
+			t.Fatalf("runMerge err=%v\n%s", err, out.String())
+		}
+
+		parents := strings.Fields(strings.TrimSpace(gitCmd(t, alice, "rev-list", "--parents", "-n", "1", "HEAD")))
+		if len(parents) != 3 {
+			t.Fatalf("expected a merge commit with 2 parents, got: %v", parents)
+		}
+		msg := gitCmd(t, alice, "log", "-1", "--pretty=%B")
+		if !strings.Contains(msg, "Co-authored-by: Bob <bob@example.com>") {
+			t.Fatalf("merge commit message missing co-author:\n%s", msg)
+		}
+	}
+}
+
+func TestSuggestedRemoteFromUpstream(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	withCwd(t, repo)
+	remote, remotes, source := suggestedRemote(context.Background())
+	if remote != "origin" {
+		t.Fatalf("suggestedRemote() remote=%q, want %q", remote, "origin")
+	}
+	if len(remotes) != 1 || remotes[0] != "origin" {
+		t.Fatalf("suggestedRemote() remotes=%v, want %v", remotes, []string{"origin"})
+	}
+	if !strings.Contains(source, "upstream") {
+		t.Fatalf("suggestedRemote() source=%q, want it to mention upstream", source)
+	}
+}
+
+func TestPrintUsageWithRemotes(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	withCwd(t, repo)
+	var out bytes.Buffer
+	if err := printUsage(context.Background(), &out); err != nil {
+		t.Fatalf("printUsage err=%v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Available remotes:") || !strings.Contains(got, "origin") {
+		t.Fatalf("usage output missing remotes:\n%s", got)
+	}
+	if !strings.Contains(got, "Using: origin") {
+		t.Fatalf("usage output missing chosen remote:\n%s", got)
+	}
+}
+
+func TestRunDiscoveryViaRun(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := initRepo(t)
+	gitCmd(t, alice, "remote", "add", "origin", origin)
+	gitCmd(t, alice, "fetch", "origin")
+	gitCmd(t, alice, "checkout", "-b", "feature-x", "main")
+	gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "feature-x")
+	withCwd(t, alice)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), nil, &out, io.Discard); err != nil {
+		t.Fatalf("run discovery err=%v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Related branches and their diffs") {
+		t.Fatalf("discovery output missing header:\n%s", out.String())
+	}
+}
+
+func TestRunMergeViaRun(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+	writeFile(t, seed, "bob.txt", "hello from bob\n")
+	gitCmd(t, seed, "add", "bob.txt")
+	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
+
+	alice := initRepo(t)
+	gitCmd(t, alice, "remote", "add", "origin", origin)
+	gitCmd(t, alice, "fetch", "origin")
+	gitCmd(t, alice, "checkout", "-b", "feature-x", "main")
+	gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "feature-x")
+	withCwd(t, alice)
+	withStdin(t, "y\n")
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"-n", "bob/feature-x"}, &out, io.Discard); err != nil {
+		t.Fatalf("run merge err=%v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "skipping automatic push") {
+		t.Fatalf("merge output missing -n message:\n%s", out.String())
+	}
+}
+
+func TestSmartPushSuccessPaths(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	ctx := context.Background()
+	if err := smartPush(ctx); err != nil {
+		t.Fatalf("smartPush (upstream) err=%v", err)
+	}
+
+	gitCmd(t, repo, "branch", "--unset-upstream")
+	gitCmd(t, repo, "config", "--local", "branch.main.pushRemote", "origin")
+	if err := smartPush(ctx); err != nil {
+		t.Fatalf("smartPush (branch.pushRemote) err=%v", err)
+	}
+
+	gitCmd(t, repo, "branch", "--unset-upstream")
+	gitCmd(t, repo, "config", "--local", "--unset-all", "branch.main.pushRemote")
+	gitCmd(t, repo, "config", "--local", "remote.pushDefault", "origin")
+	if err := smartPush(ctx); err != nil {
+		t.Fatalf("smartPush (remote.pushDefault) err=%v", err)
+	}
+
+	gitCmd(t, repo, "branch", "--unset-upstream")
+	gitCmd(t, repo, "config", "--local", "--unset-all", "remote.pushDefault")
+	if err := smartPush(ctx); err != nil {
+		t.Fatalf("smartPush (sole remote) err=%v", err)
 	}
 }
