@@ -20,6 +20,7 @@ Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaultin
 
 ## Testing Guidelines
 - Prefer deterministic tests using Go’s standard `testing` package when adding Go code.
+- When tests interact with Git workflows, keep them as realistic as possible by using the same commands shown in the `mob-consensus` help (`usage.tmpl`) where practical (e.g., `git switch -c`, `git fetch`, `git push -u`). If a test must deviate (compatibility, determinism, or focus), explain why in the test code comments.
 - For shell changes, run `bash -n x/mob-consensus` and include a short manual repro in the PR description.
 
 ## TODO Tracking

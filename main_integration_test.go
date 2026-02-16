@@ -17,6 +17,11 @@ type friendlyError struct{}
 func (friendlyError) Error() string { return "raw error" }
 func (friendlyError) Msg() string   { return "friendly message" }
 
+// These integration tests try to mirror the Git commands shown in `usage.tmpl`
+// so the exercised workflows match what real users do. When a test must deviate
+// (compatibility, determinism, or to keep the test focused), explain why in an
+// inline comment.
+
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	val, ok := os.LookupEnv(key)
@@ -413,7 +418,7 @@ func TestPrintErrorAndPanic(t *testing.T) {
 
 func TestRunCreateBranchViaRun(t *testing.T) {
 	repo := initRepo(t)
-	gitCmd(t, repo, "checkout", "-b", "feature-x")
+	gitSwitchCreate(t, repo, "feature-x")
 	withCwd(t, repo)
 
 	var out bytes.Buffer
@@ -435,7 +440,7 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 
 func TestRunCreateBranchDirtyFails(t *testing.T) {
 	repo := initRepo(t)
-	gitCmd(t, repo, "checkout", "-b", "feature-x")
+	gitSwitchCreate(t, repo, "feature-x")
 	writeFile(t, repo, "README.md", "dirty\n")
 	withCwd(t, repo)
 
@@ -480,7 +485,7 @@ func TestEnsureCleanCommitDirtyNoPush(t *testing.T) {
 
 func TestRequireUserBranchUsageError(t *testing.T) {
 	repo := initRepo(t)
-	gitCmd(t, repo, "checkout", "-b", "feature-x")
+	gitSwitchCreate(t, repo, "feature-x")
 	withCwd(t, repo)
 
 	var out bytes.Buffer
@@ -497,8 +502,8 @@ func TestRequireUserBranchUsageError(t *testing.T) {
 func TestRunMergeCleanAndNoop(t *testing.T) {
 	repo := initRepo(t)
 
-	gitCmd(t, repo, "checkout", "-b", "alice/feature-x")
-	gitCmd(t, repo, "checkout", "-b", "bob/feature-x", "main")
+	gitSwitchCreate(t, repo, "alice/feature-x")
+	gitSwitchCreate(t, repo, "bob/feature-x", "main")
 	writeFile(t, repo, "bob.txt", "hello from bob\n")
 	gitCmd(t, repo, "add", "bob.txt")
 	gitCmd(t, repo, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
@@ -547,21 +552,21 @@ func TestRunMergeCleanAndNoop(t *testing.T) {
 func TestRunDiscoveryStatusLines(t *testing.T) {
 	repo := initRepo(t)
 
-	gitCmd(t, repo, "checkout", "-b", "alice/feature-x")
+	gitSwitchCreate(t, repo, "alice/feature-x")
 	writeFile(t, repo, "alice.txt", "alice\n")
 	gitCmd(t, repo, "add", "alice.txt")
 	gitCmd(t, repo, "commit", "-m", "alice change")
 
-	gitCmd(t, repo, "checkout", "-b", "carol/feature-x")
+	gitSwitchCreate(t, repo, "carol/feature-x")
 	writeFile(t, repo, "carol.txt", "carol\n")
 	gitCmd(t, repo, "add", "carol.txt")
 	gitCmd(t, repo, "-c", "user.name=Carol", "-c", "user.email=carol@example.com", "commit", "-m", "carol change")
 
 	gitCmd(t, repo, "checkout", "alice/feature-x")
 	gitCmd(t, repo, "branch", "eve/feature-x")
-	gitCmd(t, repo, "checkout", "-b", "dave/feature-x", "main")
+	gitSwitchCreate(t, repo, "dave/feature-x", "main")
 
-	gitCmd(t, repo, "checkout", "-b", "bob/feature-x", "main")
+	gitSwitchCreate(t, repo, "bob/feature-x", "main")
 	writeFile(t, repo, "bob.txt", "bob\n")
 	gitCmd(t, repo, "add", "bob.txt")
 	gitCmd(t, repo, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
@@ -623,7 +628,7 @@ func TestResolveMergeTargetLocalAndMissing(t *testing.T) {
 	withCwd(t, repo)
 	ctx := context.Background()
 
-	gitCmd(t, repo, "checkout", "-b", "bob/feature-x")
+	gitSwitchCreate(t, repo, "bob/feature-x")
 	gitCmd(t, repo, "checkout", "main")
 
 	got, needsConfirm, err := resolveMergeTarget(ctx, "bob/feature-x")
@@ -701,14 +706,24 @@ func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
 	seed := initRepo(t)
 	gitCmd(t, seed, "remote", "add", "origin", origin)
 	gitCmd(t, seed, "push", "-u", "origin", "main")
-	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+
+	// Follow `usage.tmpl`: publish the shared twig so others can base their
+	// personal branches on it.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	// Create a peer branch on the remote to exercise remote-ref resolution.
+	// We create it directly (instead of running mob-consensus as Bob) to keep
+	// this test focused on resolveMergeTarget behavior.
+	gitSwitchCreate(t, seed, "bob/feature-x", "feature-x")
 	writeFile(t, seed, "bob.txt", "hello from bob\n")
 	gitCmd(t, seed, "add", "bob.txt")
 	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
 	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
 
-	alice := initRepo(t)
-	gitCmd(t, alice, "remote", "add", "origin", origin)
+	// Use a clone to match the user-facing workflow; using `git init` here can
+	// produce an unrelated history and make merge-related behavior flaky.
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
 	gitCmd(t, alice, "fetch", "origin")
 	withCwd(t, alice)
 
@@ -762,18 +777,29 @@ func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 	seed := initRepo(t)
 	gitCmd(t, seed, "remote", "add", "origin", origin)
 	gitCmd(t, seed, "push", "-u", "origin", "main")
-	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+
+	// Follow `usage.tmpl`: first publish the shared twig.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	// Create a peer personal branch on the remote. We do this directly (instead
+	// of running mob-consensus as Bob) to keep this test focused on the merge
+	// confirmation path.
+	gitSwitchCreate(t, seed, "bob/feature-x", "feature-x")
 	writeFile(t, seed, "bob.txt", "hello from bob\n")
 	gitCmd(t, seed, "add", "bob.txt")
 	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
 	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
 
 	{
-		alice := initRepo(t)
-		gitCmd(t, alice, "remote", "add", "origin", origin)
+		alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+		// Next group member flow from `usage.tmpl`.
 		gitCmd(t, alice, "fetch", "origin")
-		gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "main")
+		gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 		withCwd(t, alice)
+		if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
+			t.Fatalf("run(-b) err=%v", err)
+		}
 		withStdin(t, "n\n")
 
 		var out bytes.Buffer
@@ -784,11 +810,14 @@ func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 	}
 
 	{
-		alice := initRepo(t)
-		gitCmd(t, alice, "remote", "add", "origin", origin)
+		alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+		// Next group member flow from `usage.tmpl`.
 		gitCmd(t, alice, "fetch", "origin")
-		gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "main")
+		gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 		withCwd(t, alice)
+		if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
+			t.Fatalf("run(-b) err=%v", err)
+		}
 		withStdin(t, "y\n")
 
 		var out bytes.Buffer
@@ -855,12 +884,15 @@ func TestRunDiscoveryViaRun(t *testing.T) {
 	gitCmd(t, seed, "remote", "add", "origin", origin)
 	gitCmd(t, seed, "push", "-u", "origin", "main")
 
-	alice := initRepo(t)
-	gitCmd(t, alice, "remote", "add", "origin", origin)
-	gitCmd(t, alice, "fetch", "origin")
-	gitCmd(t, alice, "checkout", "-b", "feature-x", "main")
-	gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "feature-x")
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	// First group member flow from `usage.tmpl`.
+	gitSwitchCreate(t, alice, "feature-x")
+	gitCmd(t, alice, "push", "-u", "origin", "feature-x")
 	withCwd(t, alice)
+	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(-b) err=%v", err)
+	}
+	gitCmd(t, alice, "push", "-u", "origin", "alice/feature-x")
 
 	var out bytes.Buffer
 	if err := run(context.Background(), nil, &out, io.Discard); err != nil {
@@ -877,18 +909,26 @@ func TestRunMergeViaRun(t *testing.T) {
 	seed := initRepo(t)
 	gitCmd(t, seed, "remote", "add", "origin", origin)
 	gitCmd(t, seed, "push", "-u", "origin", "main")
-	gitCmd(t, seed, "checkout", "-b", "bob/feature-x", "main")
+
+	// Follow `usage.tmpl`: publish the shared twig, then a peer personal branch.
+	// We create the peer branch directly to keep the test setup short.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+	gitSwitchCreate(t, seed, "bob/feature-x", "feature-x")
 	writeFile(t, seed, "bob.txt", "hello from bob\n")
 	gitCmd(t, seed, "add", "bob.txt")
 	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
 	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
 
-	alice := initRepo(t)
-	gitCmd(t, alice, "remote", "add", "origin", origin)
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	// Next group member flow from `usage.tmpl`.
 	gitCmd(t, alice, "fetch", "origin")
-	gitCmd(t, alice, "checkout", "-b", "feature-x", "main")
-	gitCmd(t, alice, "checkout", "-b", "alice/feature-x", "feature-x")
+	gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 	withCwd(t, alice)
+	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(-b) err=%v", err)
+	}
+	gitCmd(t, alice, "push", "-u", "origin", "alice/feature-x")
 	withStdin(t, "y\n")
 
 	var out bytes.Buffer
