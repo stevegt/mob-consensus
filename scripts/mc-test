@@ -808,7 +808,10 @@ cmd_coverage() {
   local cov_total="$root/coverage.total.txt"
   local cov_zero="$root/coverage.zero.txt"
   local cov_low="$root/coverage.low.txt"
+  local cov_tmp="$cov_out.tmp"
   mkdir -p "$root/gotmp"
+
+  rm -f "$cov_out" "$cov_html" "$cov_func" "$cov_total" "$cov_zero" "$cov_low" "$cov_tmp"
 
   echo "$prog: writing coverage to:" >&2
   echo "  $cov_out" >&2
@@ -818,7 +821,29 @@ cmd_coverage() {
   echo "  $cov_zero" >&2
   echo "  $cov_low" >&2
 
-  (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go test -coverprofile="$cov_out" ./...) 1>&2
+  local test_rc="0"
+  if (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go test -coverprofile="$cov_tmp" ./...) 1>&2; then
+    :
+  else
+    test_rc="$?"
+    echo "$prog: go test failed (exit $test_rc); attempting to generate coverage reports anyway" >&2
+  fi
+  if [[ ! -s "$cov_tmp" ]]; then
+    echo "$prog: no coverage profile was produced ($cov_tmp)" >&2
+    if [[ "$test_rc" != "0" ]]; then
+      return "$test_rc"
+    fi
+    return 1
+  fi
+  if ! head -n 1 "$cov_tmp" | grep -Eq '^mode:'; then
+    echo "$prog: invalid coverage profile (missing mode header): $cov_tmp" >&2
+    if [[ "$test_rc" != "0" ]]; then
+      return "$test_rc"
+    fi
+    return 1
+  fi
+  mv "$cov_tmp" "$cov_out"
+
   (cd "$src_root" && env GOCACHE="$root/gocache" GOMODCACHE="$root/gomodcache" GOTMPDIR="$root/gotmp" TMPDIR="$root/gotmp" GOFLAGS="-mod=readonly" go tool cover -html="$cov_out" -o "$cov_html") 1>&2
 
   echo "+ (cd \"$src_root\" && env ... go tool cover -func=\"$cov_out\" >\"$cov_func\")" >&2
@@ -827,6 +852,11 @@ cmd_coverage() {
   awk '/^total:/ {print; found=1} END {if(!found) exit 1}' "$cov_func" >"$cov_total"
   awk '$1 != "total:" && $NF == "0.0%" {print}' "$cov_func" >"$cov_zero"
   awk '$1 != "total:" && $NF ~ /%$/ {p=$NF; sub(/%$/, "", p); if(p+0 < 50.0) print}' "$cov_func" >"$cov_low"
+
+  if [[ "$test_rc" != "0" ]]; then
+    echo "$prog: coverage reports generated, but tests failed (exit $test_rc)" >&2
+    return "$test_rc"
+  fi
 }
 
 cmd_run() {
