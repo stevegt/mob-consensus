@@ -1,21 +1,21 @@
 # TODO 012 - LLM-assisted review and human-in-the-loop approval
 
-Context: `mob-consensus` exists to support collaborative, AI-assisted software
-development. In that world, the heavy lifting (writing code, resolving conflicts,
-drafting messages) can be done by AI agents, but **humans must be able to review,
-test, and explicitly approve** changes before they land. “We’re all testers now.”
+Context: `mob-consensus` exists to support collaborative, AI-assisted
+software development. In that world, the heavy lifting (writing code,
+resolving conflicts, drafting messages) can be done by AI agents, but
+**humans must review, edit, and explicitly approve** changes before
+they land. “We’re all testers now.”
 
-Also: one or more “mob-consensus users” may themselves be AI agents. The workflow
+Also: one or more “mob-consensus users” may themselves be AI agents. The UI
 should support both:
 
 - a human-in-the-loop approval gate for commits/merges/pushes, and
-- an automation-friendly mode for agent orchestration (but still with explicit
-  confirmation when a human is present).
+- automation-friendly flags for agent orchestration 
 
-Goal: add an interactive, Codex-like review loop that can explain diffs in
-context and guide users through “approve / edit / abort”, with optional LLM
-assistance. This should reduce reliance on `mergetool`/`difftool` and avoid
-duplicate review (see TODO 011).
+Goal: add an interactive, Codex-like review loop that can explain
+diffs in context and guide users through “approve / edit / abort”,
+with LLM assistance. This should reduce reliance on
+`mergetool`/`difftool` see TODO 011.
 
 ## Proposed UX (interactive review loop)
 
@@ -32,6 +32,10 @@ After a merge (clean or conflicted) — or before committing/pushing any changes
 - Ask the user what to do next:
   - approve this change and continue,
   - open editor (`$EDITOR`) to adjust the file,
+    - XXX how well will this work with e.g. vscode?
+    - XXX we need to be able to open the editor in a merge or diff mode so the user can see the changes in context and make informed edits.
+    - XXX do we need to restrict usage to neovim?  pros and cons.
+    - XXX does a lsp interface make more sense here?  pros and cons.
   - re-run a tool (`git mergetool`, `git add -p`, etc.),
   - abort.
 - Only after approval should `mob-consensus` commit (and optionally push).
@@ -49,8 +53,11 @@ be able to “self-approve” or bypass confirmations.
   gracefully.
 - Wrong summaries: user must be encouraged to inspect the raw diff and/or open
   the file.
+- XXX testing -- how would we even test this?  mock the LLM calls?
 
 ## Plan
+
+- XXX update the following according to the answers to the above XXX questions
 
 - [ ] 012.1 Define approval semantics:
   - [ ] 012.1.1 Per file vs per hunk vs per commit approval.
