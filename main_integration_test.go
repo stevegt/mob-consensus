@@ -170,6 +170,67 @@ func withStdin(t *testing.T, input string) {
 	})
 }
 
+func configureRepo(t *testing.T, dir, name, email string) {
+	t.Helper()
+	requireTempDir(t, dir)
+	gitCmd(t, dir, "config", "--local", "user.name", name)
+	gitCmd(t, dir, "config", "--local", "user.email", email)
+	gitCmd(t, dir, "config", "--local", "commit.gpgSign", "false")
+	gitCmd(t, dir, "config", "--local", "difftool.prompt", "false")
+	gitCmd(t, dir, "config", "--local", "mergetool.prompt", "false")
+	gitCmd(t, dir, "config", "--local", "difftool.vimdiff.cmd", "true")
+	gitCmd(t, dir, "config", "--local", "mergetool.vimdiff.cmd", "true")
+}
+
+func cloneRepo(t *testing.T, remote, name, email string) string {
+	t.Helper()
+	requireGit(t)
+	setupIsolatedGitEnv(t)
+
+	dir := filepath.Join(t.TempDir(), "clone")
+	requireTempDir(t, dir)
+	cmd := exec.Command("git", "clone", remote, dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git clone %s failed: %v\n%s", remote, err, out)
+	}
+	configureRepo(t, dir, name, email)
+	return dir
+}
+
+func gitSwitchCreate(t *testing.T, dir, branch string, startPoint ...string) {
+	t.Helper()
+	requireTempDir(t, dir)
+
+	// `usage.tmpl` recommends `git switch -c`. Use it when available, but fall
+	// back to `git checkout -b` for older Git versions (<2.23) so the tests run
+	// on a wider range of systems.
+	args := []string{"switch", "-c", branch}
+	if len(startPoint) > 0 {
+		args = append(args, startPoint[0])
+	}
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		return
+	}
+	if strings.Contains(string(out), "is not a git command") {
+		args = []string{"checkout", "-b", branch}
+		if len(startPoint) > 0 {
+			args = append(args, startPoint[0])
+		}
+		cmd = exec.Command("git", args...)
+		cmd.Dir = dir
+		out, err = cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+		}
+		return
+	}
+	t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
+}
+
 func initRepo(t *testing.T) string {
 	t.Helper()
 	requireGit(t)
@@ -177,13 +238,7 @@ func initRepo(t *testing.T) string {
 
 	dir := t.TempDir()
 	gitInitMain(t, dir)
-	gitCmd(t, dir, "config", "--local", "user.name", "Alice")
-	gitCmd(t, dir, "config", "--local", "user.email", "alice@example.com")
-	gitCmd(t, dir, "config", "--local", "commit.gpgSign", "false")
-	gitCmd(t, dir, "config", "--local", "difftool.prompt", "false")
-	gitCmd(t, dir, "config", "--local", "mergetool.prompt", "false")
-	gitCmd(t, dir, "config", "--local", "difftool.vimdiff.cmd", "true")
-	gitCmd(t, dir, "config", "--local", "mergetool.vimdiff.cmd", "true")
+	configureRepo(t, dir, "Alice", "alice@example.com")
 
 	writeFile(t, dir, "README.md", "seed\n")
 	gitCmd(t, dir, "add", "README.md")
@@ -201,6 +256,13 @@ func initBareRemote(t *testing.T) string {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git init --bare failed: %v\n%s", err, out)
+	}
+	// Make the bare remote deterministic for clones regardless of the user's
+	// global init.defaultBranch config.
+	cmd = exec.Command("git", "symbolic-ref", "HEAD", "refs/heads/main")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git symbolic-ref HEAD refs/heads/main failed: %v\n%s", err, out)
 	}
 	return dir
 }
