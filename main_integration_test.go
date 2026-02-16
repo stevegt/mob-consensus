@@ -17,6 +17,21 @@ type friendlyError struct{}
 func (friendlyError) Error() string { return "raw error" }
 func (friendlyError) Msg() string   { return "friendly message" }
 
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	val, ok := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unsetenv %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if !ok {
+			_ = os.Unsetenv(key)
+			return
+		}
+		_ = os.Setenv(key, val)
+	})
+}
+
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -26,6 +41,22 @@ func requireGit(t *testing.T) {
 
 func setupIsolatedGitEnv(t *testing.T) {
 	t.Helper()
+	// Prevent user environment variables from pointing git at a non-temp repo.
+	for _, key := range []string{
+		"GIT_DIR",
+		"GIT_WORK_TREE",
+		"GIT_INDEX_FILE",
+		"GIT_OBJECT_DIRECTORY",
+		"GIT_ALTERNATE_OBJECT_DIRECTORIES",
+		"GIT_COMMON_DIR",
+		"GIT_CEILING_DIRECTORIES",
+		"GIT_DISCOVERY_ACROSS_FILESYSTEM",
+		"GIT_CONFIG_GLOBAL",
+		"GIT_CONFIG_SYSTEM",
+	} {
+		unsetEnv(t, key)
+	}
+
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
@@ -37,8 +68,27 @@ func setupIsolatedGitEnv(t *testing.T) {
 	t.Setenv("GIT_EDITOR", "true")
 }
 
+func requireTempDir(t *testing.T, dir string) {
+	t.Helper()
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		t.Fatalf("abs path: %v", err)
+	}
+	absTmp, err := filepath.Abs(os.TempDir())
+	if err != nil {
+		t.Fatalf("abs tmp path: %v", err)
+	}
+	absTmp = filepath.Clean(absTmp)
+	absDir = filepath.Clean(absDir)
+	prefix := absTmp + string(os.PathSeparator)
+	if absDir != absTmp && !strings.HasPrefix(absDir, prefix) {
+		t.Fatalf("refusing to operate outside os.TempDir (%s): %s", absTmp, absDir)
+	}
+}
+
 func gitCmd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
+	requireTempDir(t, dir)
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
@@ -50,6 +100,7 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 
 func gitInitMain(t *testing.T, dir string) {
 	t.Helper()
+	requireTempDir(t, dir)
 	cmd := exec.Command("git", "init", "-b", "main")
 	cmd.Dir = dir
 	if out, err := cmd.CombinedOutput(); err == nil {
@@ -73,6 +124,7 @@ func gitInitMain(t *testing.T, dir string) {
 
 func writeFile(t *testing.T, dir, relPath, contents string) {
 	t.Helper()
+	requireTempDir(t, dir)
 	path := filepath.Join(dir, filepath.FromSlash(relPath))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -84,6 +136,7 @@ func writeFile(t *testing.T, dir, relPath, contents string) {
 
 func withCwd(t *testing.T, dir string) {
 	t.Helper()
+	requireTempDir(t, dir)
 	old, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
@@ -122,6 +175,7 @@ func initBareRemote(t *testing.T) string {
 	requireGit(t)
 
 	dir := filepath.Join(t.TempDir(), "remote.git")
+	requireTempDir(t, dir)
 	cmd := exec.Command("git", "init", "--bare", dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -134,6 +188,7 @@ func writeCommitMessageEditor(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	editorPath := filepath.Join(dir, "git-editor.sh")
+	requireTempDir(t, editorPath)
 	script := `#!/usr/bin/env bash
 set -euo pipefail
 msg_file="${1:-}"
@@ -282,7 +337,7 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	if err := run(context.Background(), []string{"-b", "feature-x"}, &out, io.Discard); err != nil {
 		t.Fatalf("run(-b) err=%v\n%s", err, out.String())
 	}
-	if got := strings.TrimSpace(gitCmd(t, repo, "branch", "--show-current")); got != "alice/feature-x" {
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
 		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
 	}
 
@@ -290,7 +345,7 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	if err := run(context.Background(), []string{"-b", "feature-x"}, &out, io.Discard); err != nil {
 		t.Fatalf("run(-b) second time err=%v\n%s", err, out.String())
 	}
-	if got := strings.TrimSpace(gitCmd(t, repo, "branch", "--show-current")); got != "alice/feature-x" {
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
 		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
 	}
 }
