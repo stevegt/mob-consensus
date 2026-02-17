@@ -86,6 +86,33 @@ func (e usageError) Unwrap() error {
 	return e.Err
 }
 
+type branchNotFoundError struct {
+	Branch  string
+	Remotes []string
+}
+
+func (e branchNotFoundError) Error() string {
+	if len(e.Remotes) == 0 {
+		return fmt.Sprintf("mob-consensus: branch %q not found locally and no remotes configured (hint: git remote -v)", e.Branch)
+	}
+
+	remotes := append([]string(nil), e.Remotes...)
+	sort.Strings(remotes)
+	return fmt.Sprintf(
+		"mob-consensus: branch %q not found locally or on any remote (%s) (hint: git fetch --all; or use an explicit ref like <remote>/%s)",
+		e.Branch,
+		strings.Join(remotes, ", "),
+		e.Branch,
+	)
+}
+
+func (e branchNotFoundError) Msg() string {
+	return fmt.Sprintf(
+		"mob-consensus: branch %q does not exist.\n\nPick a branch name from the list above (the same list shown by running `mob-consensus` with no args), then re-run:\n  mob-consensus <branch>",
+		e.Branch,
+	)
+}
+
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	opts, showHelp, err := parseArgs(args)
 	if err != nil {
@@ -482,12 +509,18 @@ func diffStatusLine(branch, ahead, behind string) string {
 }
 
 func runMerge(ctx context.Context, opts options, currentBranch string, stdout io.Writer) error {
-	if err := ensureClean(ctx, opts, true, stdout); err != nil {
+	mergeTarget, needsConfirm, err := resolveMergeTarget(ctx, opts.otherBranch)
+	if err != nil {
+		var nf branchNotFoundError
+		if errors.As(err, &nf) {
+			// Mirror `mob-consensus` without args by showing the related branch
+			// list, so the user can pick a valid branch.
+			_ = runDiscovery(ctx, options{}, currentBranch, stdout)
+		}
 		return err
 	}
 
-	mergeTarget, needsConfirm, err := resolveMergeTarget(ctx, opts.otherBranch)
-	if err != nil {
+	if err := ensureClean(ctx, opts, true, stdout); err != nil {
 		return err
 	}
 	if needsConfirm {
@@ -674,7 +707,7 @@ func resolveMergeTarget(ctx context.Context, otherBranch string) (string, bool, 
 
 	remotesOut, err := gitOutputTrimmed(ctx, "remote")
 	if err != nil {
-		return "", false, fmt.Errorf("mob-consensus: branch %q not found locally and no remotes configured (hint: git remote -v)", otherBranch)
+		return "", false, branchNotFoundError{Branch: otherBranch}
 	}
 
 	var remotes []string
@@ -686,7 +719,7 @@ func resolveMergeTarget(ctx context.Context, otherBranch string) (string, bool, 
 		remotes = append(remotes, line)
 	}
 	if len(remotes) == 0 {
-		return "", false, fmt.Errorf("mob-consensus: branch %q not found locally and no remotes configured (hint: git remote -v)", otherBranch)
+		return "", false, branchNotFoundError{Branch: otherBranch}
 	}
 
 	var candidates []string
@@ -701,13 +734,7 @@ func resolveMergeTarget(ctx context.Context, otherBranch string) (string, bool, 
 	case 1:
 		return candidates[0], true, nil
 	case 0:
-		sort.Strings(remotes)
-		return "", false, fmt.Errorf(
-			"mob-consensus: branch %q not found locally or on any remote (%s) (hint: git fetch --all; or use an explicit ref like <remote>/%s)",
-			otherBranch,
-			strings.Join(remotes, ", "),
-			otherBranch,
-		)
+		return "", false, branchNotFoundError{Branch: otherBranch, Remotes: remotes}
 	default:
 		sort.Strings(candidates)
 		return "", false, fmt.Errorf(

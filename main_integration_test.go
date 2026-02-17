@@ -771,6 +771,69 @@ func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
 	}
 }
 
+func TestRunMergeBranchNotFoundShowsDiscovery(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	// Follow `usage.tmpl`: publish the shared twig so others can base their
+	// personal branches on it.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	// Create a peer branch on the remote so discovery has a realistic branch to
+	// show.
+	gitSwitchCreate(t, seed, "bob/feature-x", "feature-x")
+	writeFile(t, seed, "bob.txt", "hello from bob\n")
+	gitCmd(t, seed, "add", "bob.txt")
+	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	// Next group member flow from `usage.tmpl`.
+	gitCmd(t, alice, "fetch", "origin")
+	gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
+	withCwd(t, alice)
+	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(-b) err=%v", err)
+	}
+
+	headBefore := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "HEAD"))
+	statusBefore := strings.TrimSpace(gitCmd(t, alice, "status", "--porcelain"))
+	if statusBefore != "" {
+		t.Fatalf("expected clean working tree, got status:\n%s", statusBefore)
+	}
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"nobody/feature-x"}, &out, io.Discard)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	if !strings.Contains(out.String(), "Related branches and their diffs") {
+		t.Fatalf("expected discovery output, got:\n%s", out.String())
+	}
+
+	var errOut bytes.Buffer
+	printError(&errOut, err)
+	if !strings.Contains(errOut.String(), "does not exist") {
+		t.Fatalf("expected friendly not-found message, got:\n%s", errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "Pick a branch name from the list above") {
+		t.Fatalf("expected selection hint, got:\n%s", errOut.String())
+	}
+
+	headAfter := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "HEAD"))
+	if headAfter != headBefore {
+		t.Fatalf("expected HEAD to be unchanged: before=%s after=%s", headBefore, headAfter)
+	}
+	statusAfter := strings.TrimSpace(gitCmd(t, alice, "status", "--porcelain"))
+	if statusAfter != statusBefore {
+		t.Fatalf("expected status to be unchanged: before=%q after=%q", statusBefore, statusAfter)
+	}
+}
+
 func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 	origin := initBareRemote(t)
 
