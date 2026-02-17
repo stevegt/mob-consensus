@@ -8,6 +8,10 @@ import (
 	"testing"
 )
 
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
+
 func TestTwigFromBranch(t *testing.T) {
 	t.Parallel()
 
@@ -239,5 +243,13 @@ func TestRequireUserBranch(t *testing.T) {
 	}
 	if err := requireUserBranch(false, "alice", "bob/feature-x"); err == nil {
 		t.Fatalf("requireUserBranch(on non-user branch) err=nil, want error")
+	}
+}
+
+func TestPromptStringError(t *testing.T) {
+	t.Parallel()
+
+	if _, err := promptString(errReader{}); err == nil {
+		t.Fatalf("promptString(errReader) err=nil, want error")
 	}
 }

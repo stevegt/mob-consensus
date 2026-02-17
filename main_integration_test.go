@@ -17,6 +17,8 @@ type friendlyError struct{}
 func (friendlyError) Error() string { return "raw error" }
 func (friendlyError) Msg() string   { return "friendly message" }
 
+type exitCode int
+
 // These integration tests try to mirror the Git commands shown in `usage.tmpl`
 // so the exercised workflows match what real users do. When a test must deviate
 // (compatibility, determinism, or to keep the test focused), explain why in an
@@ -311,6 +313,60 @@ func TestRunHelpOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestMainUsesExitFunc(t *testing.T) {
+	setupIsolatedGitEnv(t)
+	dir := t.TempDir()
+	withCwd(t, dir)
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatalf("open devnull: %v", err)
+	}
+
+	oldExit := exitFunc
+	oldArgs := os.Args
+	oldStdout := os.Stdout
+	oldStderr := os.Stderr
+	os.Stdout = devNull
+	os.Stderr = devNull
+	exitFunc = func(code int) { panic(exitCode(code)) }
+
+	t.Cleanup(func() {
+		exitFunc = oldExit
+		os.Args = oldArgs
+		os.Stdout = oldStdout
+		os.Stderr = oldStderr
+		_ = devNull.Close()
+	})
+
+	runMain := func(args ...string) int {
+		os.Args = append([]string{"mob-consensus"}, args...)
+		code := -1
+		func() {
+			defer func() {
+				r := recover()
+				if r == nil {
+					t.Fatalf("expected exit for args=%v", args)
+				}
+				c, ok := r.(exitCode)
+				if !ok {
+					t.Fatalf("unexpected panic: %T %v", r, r)
+				}
+				code = int(c)
+			}()
+			main()
+		}()
+		return code
+	}
+
+	if got := runMain("-h"); got != 0 {
+		t.Fatalf("main -h exit=%d, want 0", got)
+	}
+	if got := runMain("--nope"); got != 1 {
+		t.Fatalf("main --nope exit=%d, want 1", got)
+	}
+}
+
 func TestBranchUserFromEmail(t *testing.T) {
 	requireGit(t)
 	setupIsolatedGitEnv(t)
@@ -341,6 +397,25 @@ func TestBranchUserFromEmail(t *testing.T) {
 	gitCmd(t, dir, "config", "--local", "user.email", "bad user@example.com")
 	if _, err := branchUserFromEmail(ctx); err == nil || !strings.Contains(err.Error(), "invalid branch name") {
 		t.Fatalf("expected invalid-branch error, got: %v", err)
+	}
+}
+
+func TestValidateBranchName(t *testing.T) {
+	requireGit(t)
+	setupIsolatedGitEnv(t)
+
+	dir := t.TempDir()
+	withCwd(t, dir)
+
+	ctx := context.Background()
+	if err := validateBranchName(ctx, "twig", ""); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected empty error, got: %v", err)
+	}
+	if err := validateBranchName(ctx, "twig", "bad user"); err == nil || !strings.Contains(err.Error(), "invalid") {
+		t.Fatalf("expected invalid error, got: %v", err)
+	}
+	if err := validateBranchName(ctx, "twig", "alice/feature-x"); err != nil {
+		t.Fatalf("expected valid branch, got err=%v", err)
 	}
 }
 
@@ -559,6 +634,193 @@ func TestRunInitJoinDetachedHeadDoesNotRequireBase(t *testing.T) {
 	}
 }
 
+func TestRunInitPlanDetachedHeadShowsBaseHint(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+	gitCmd(t, bob, "checkout", "--detach", "HEAD")
+
+	withCwd(t, bob)
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"init", "--twig", "feature-x", "--plan"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(init --plan) err=%v\n%s", err, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "git fetch origin") {
+		t.Fatalf("init plan missing fetch:\n%s", got)
+	}
+	if !strings.Contains(got, "mob-consensus start --twig feature-x --base <ref>") || !strings.Contains(got, "(hint: pass --base <ref>)") {
+		t.Fatalf("init plan missing detached-HEAD base hint:\n%s", got)
+	}
+}
+
+func TestRunInitAbortAfterFetch(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	// init has two interactive confirmations: one for the fetch step, and one
+	// for the suggested start/join action. Approve the fetch, then abort.
+	withStdin(t, "y\nn\n")
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"init", "--twig", "feature-x"}, &out, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "aborted") {
+		t.Fatalf("expected init abort, got err=%v\n%s", err, out.String())
+	}
+}
+
+func TestRunInitDetachedHeadStartRequiresBase(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+	gitCmd(t, bob, "checkout", "--detach", "HEAD")
+	withCwd(t, bob)
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"init", "--twig", "feature-x", "--yes"}, &out, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "could not determine a base ref") {
+		t.Fatalf("expected init detached-HEAD start to require --base, got err=%v\n%s", err, out.String())
+	}
+}
+
+func TestRunStartPlanOutput(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"start", "--twig", "feature-x", "--base", "main", "--plan"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(start --plan) err=%v\n%s", err, out.String())
+	}
+	got := out.String()
+	for _, want := range []string{
+		"git fetch origin",
+		"git checkout -b feature-x main",
+		"git push -u origin feature-x",
+		"git checkout -b alice/feature-x feature-x",
+		"git push -u origin alice/feature-x",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("start plan missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunStartFailsWhenTwigExistsOnRemote(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"start", "--twig", "feature-x", "--base", "main", "--yes"}, &out, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "shared twig") || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("expected start to fail when twig exists on remote, got err=%v\n%s", err, out.String())
+	}
+}
+
+func TestRunJoinPlanOutput(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"join", "--twig", "feature-x", "--plan"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(join --plan) err=%v\n%s", err, out.String())
+	}
+	got := out.String()
+	for _, want := range []string{
+		"git fetch origin",
+		"git checkout -b feature-x origin/feature-x",
+		"git checkout -b alice/feature-x feature-x",
+		"git push -u origin alice/feature-x",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("join plan missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRunJoinFailsWhenTwigMissingOnRemote(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+	withCwd(t, bob)
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"join", "--twig", "feature-x", "--yes"}, &out, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "shared twig") || !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("expected join to fail when twig missing on remote, got err=%v\n%s", err, out.String())
+	}
+}
+
+func TestRunJoinUsesExistingRemotePersonalBranch(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	// Publish the shared twig as the first group member would.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	// Publish a peer personal branch with a commit not present on the twig, so we
+	// can verify join checks it out instead of re-creating it from the twig.
+	gitSwitchCreate(t, seed, "bob/feature-x", "feature-x")
+	writeFile(t, seed, "bob.txt", "hello from bob\n")
+	gitCmd(t, seed, "add", "bob.txt")
+	gitCmd(t, seed, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+	gitCmd(t, seed, "push", "-u", "origin", "bob/feature-x")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+	withCwd(t, bob)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"join", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(join) err=%v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(gitCmd(t, bob, "rev-parse", "--abbrev-ref", "HEAD")); got != "bob/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "bob/feature-x")
+	}
+	if got := gitCmd(t, bob, "show", "HEAD:bob.txt"); !strings.Contains(got, "hello from bob") {
+		t.Fatalf("expected bob/feature-x to include bob.txt, got:\n%s", got)
+	}
+}
+
 func TestIsDirtyCleanAndDirty(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -579,6 +841,18 @@ func TestIsDirtyCleanAndDirty(t *testing.T) {
 	}
 	if !dirty {
 		t.Fatalf("isDirty()=false, want true")
+	}
+}
+
+func TestIsDirtyOutsideRepoErrors(t *testing.T) {
+	requireGit(t)
+	setupIsolatedGitEnv(t)
+
+	dir := t.TempDir()
+	withCwd(t, dir)
+
+	if _, err := isDirty(context.Background()); err == nil {
+		t.Fatalf("expected isDirty() to error outside a git repo")
 	}
 }
 
@@ -642,6 +916,23 @@ func TestResolveRemotePromptingAndErrors(t *testing.T) {
 	// path in resolveRemote (no deterministic suggestion).
 	gitCmd(t, repo, "remote", "add", "origin", repo)
 	gitCmd(t, repo, "remote", "add", "jj", repo)
+
+	{
+		remote, err := resolveRemote(ctx, cmdStart, options{remote: "jj"}, io.Discard)
+		if err != nil {
+			t.Fatalf("resolveRemote(--remote jj) err=%v", err)
+		}
+		if remote != "jj" {
+			t.Fatalf("resolveRemote(--remote jj)=%q, want %q", remote, "jj")
+		}
+	}
+
+	{
+		_, err := resolveRemote(ctx, cmdStart, options{remote: "nope"}, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Fatalf("resolveRemote(--remote nope) err=%v, want not found", err)
+		}
+	}
 
 	{
 		// Non-interactive modes require --remote when multiple remotes exist.
@@ -742,6 +1033,70 @@ func TestRunGitPlanModesAndConfirm(t *testing.T) {
 	}
 }
 
+func TestRunGitPlanYesAndErrors(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	ctx := context.Background()
+
+	quietSteps := []gitPlanStep{
+		{
+			Explain: "Check status (no output when clean)",
+			Args: func(ctx context.Context) ([]string, error) {
+				return []string{"status", "--porcelain"}, nil
+			},
+		},
+	}
+
+	{
+		var out bytes.Buffer
+		var stderr bytes.Buffer
+		if err := runGitPlan(ctx, options{yes: true}, "yes title", quietSteps, &out, &stderr); err != nil {
+			t.Fatalf("runGitPlan(yes) err=%v\n%s", err, out.String())
+		}
+		if strings.Contains(stderr.String(), "Run this?") {
+			t.Fatalf("runGitPlan(yes) unexpectedly prompted:\n%s", stderr.String())
+		}
+	}
+
+	{
+		badSteps := []gitPlanStep{
+			{
+				Explain: "Args error",
+				Args: func(context.Context) ([]string, error) {
+					return nil, errors.New("boom")
+				},
+			},
+		}
+		if err := runGitPlan(ctx, options{plan: true}, "plan", badSteps, io.Discard, io.Discard); err == nil {
+			t.Fatalf("runGitPlan(plan args error) err=nil, want error")
+		}
+		if err := runGitPlan(ctx, options{dryRun: true}, "dry", badSteps, io.Discard, io.Discard); err == nil {
+			t.Fatalf("runGitPlan(dry-run args error) err=nil, want error")
+		}
+		if err := runGitPlan(ctx, options{}, "exec", badSteps, io.Discard, io.Discard); err == nil {
+			t.Fatalf("runGitPlan(exec args error) err=nil, want error")
+		}
+	}
+
+	{
+		preFailSteps := []gitPlanStep{
+			{
+				Explain: "Pre error",
+				Pre: func(context.Context) error {
+					return errors.New("pre fail")
+				},
+				Args: func(context.Context) ([]string, error) {
+					return []string{"status", "--porcelain"}, nil
+				},
+			},
+		}
+		if err := runGitPlan(ctx, options{}, "exec", preFailSteps, io.Discard, io.Discard); err == nil {
+			t.Fatalf("runGitPlan(pre error) err=nil, want error")
+		}
+	}
+}
+
 func TestRunCreateBranchDirtyFails(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
@@ -784,6 +1139,48 @@ func TestEnsureCleanCommitDirtyNoPush(t *testing.T) {
 	}
 	if subject := strings.TrimSpace(gitCmd(t, repo, "log", "-1", "--pretty=%s")); subject != "test auto commit" {
 		t.Fatalf("commit subject=%q, want %q", subject, "test auto commit")
+	}
+}
+
+func TestEnsureCleanAllowsDirtyWhenNotRequired(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	writeFile(t, repo, "README.md", "dirty\n")
+
+	var out bytes.Buffer
+	if err := ensureClean(context.Background(), options{}, false, &out); err != nil {
+		t.Fatalf("ensureClean err=%v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "you have uncommitted changes") {
+		t.Fatalf("expected dirty-tree message, got:\n%s", out.String())
+	}
+}
+
+func TestEnsureCleanCommitDirtyPushes(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	editor := writeCommitMessageEditor(t)
+	t.Setenv("GIT_EDITOR", editor)
+
+	writeFile(t, alice, "README.md", "dirty change\n")
+
+	var out bytes.Buffer
+	if err := ensureClean(context.Background(), options{commitDirty: true}, true, &out); err != nil {
+		t.Fatalf("ensureClean err=%v\n%s", err, out.String())
+	}
+
+	head := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "HEAD"))
+	remote := gitCmd(t, seed, "ls-remote", "--heads", "origin", "main")
+	if !strings.Contains(remote, head) || !strings.Contains(remote, "refs/heads/main") {
+		t.Fatalf("expected remote main to be updated to %s, got:\n%s", head, remote)
 	}
 }
 
@@ -850,6 +1247,45 @@ func TestRunMergeCleanAndNoop(t *testing.T) {
 	headAfter = strings.TrimSpace(gitCmd(t, repo, "rev-parse", "HEAD"))
 	if headAfter != headBefore {
 		t.Fatalf("expected no-op merge to leave HEAD unchanged")
+	}
+}
+
+func TestRunMergeConflictRequiresResolution(t *testing.T) {
+	repo := initRepo(t)
+
+	// Make mergetool deterministic and non-interactive: when a conflict happens,
+	// resolve by choosing our side for the known conflicted file.
+	gitCmd(t, repo, "config", "--local", "mergetool.vimdiff.cmd", `sh -c 'git checkout --ours -- conflict.txt && git add conflict.txt'`)
+
+	gitSwitchCreate(t, repo, "alice/feature-x")
+	writeFile(t, repo, "conflict.txt", "alice\n")
+	gitCmd(t, repo, "add", "conflict.txt")
+	gitCmd(t, repo, "commit", "-m", "alice change")
+
+	gitSwitchCreate(t, repo, "bob/feature-x", "main")
+	writeFile(t, repo, "conflict.txt", "bob\n")
+	gitCmd(t, repo, "add", "conflict.txt")
+	gitCmd(t, repo, "-c", "user.name=Bob", "-c", "user.email=bob@example.com", "commit", "-m", "bob change")
+
+	gitCmd(t, repo, "checkout", "alice/feature-x")
+
+	withCwd(t, repo)
+	var out bytes.Buffer
+	if err := runMerge(context.Background(), options{otherBranch: "bob/feature-x", noPush: true}, "alice/feature-x", &out); err != nil {
+		t.Fatalf("runMerge err=%v\n%s", err, out.String())
+	}
+
+	// Verify the merge completed and doesn't contain conflict markers.
+	data, err := os.ReadFile(filepath.Join(repo, "conflict.txt"))
+	if err != nil {
+		t.Fatalf("read conflict.txt: %v", err)
+	}
+	got := string(data)
+	if strings.Contains(got, "<<<<<<<") || strings.Contains(got, ">>>>>>>") || strings.Contains(got, "=======") {
+		t.Fatalf("expected conflict markers to be resolved, got:\n%s", got)
+	}
+	if strings.TrimSpace(got) != "alice" {
+		t.Fatalf("expected our side to be chosen, got:\n%s", got)
 	}
 }
 

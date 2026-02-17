@@ -47,25 +47,32 @@ type options struct {
 	yes    bool
 }
 
+var exitFunc = os.Exit
+
 func main() {
+	exitFunc(mainExit(context.Background(), os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func mainExit(ctx context.Context, args []string, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			printPanic(os.Stderr, r)
-			os.Exit(1)
+			printPanic(stderr, r)
+			code = 1
 		}
 	}()
 
-	ctx := context.Background()
-	if err := run(ctx, os.Args[1:], os.Stdout, os.Stderr); err != nil {
+	if err := run(ctx, args, stdout, stderr); err != nil {
 		var uerr usageError
 		if errors.As(err, &uerr) {
-			printError(os.Stderr, uerr.Err)
-			_ = printUsage(ctx, os.Stderr)
-			os.Exit(1)
+			printError(stderr, uerr.Err)
+			_ = printUsage(ctx, stderr)
+			return 1
 		}
-		printError(os.Stderr, err)
-		os.Exit(1)
+		printError(stderr, err)
+		return 1
 	}
+
+	return 0
 }
 
 func printError(w io.Writer, err error) {
