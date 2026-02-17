@@ -2,6 +2,7 @@
 
 This list is sorted by priority (not number). TODO numbers are stable; do not renumber.
 
+- [ ] 013 - TUI automation and scraping (`TODO/013-tui-automation-and-scraping.md`)
 - [x] 004 - Per-repo test user init script (`TODO/004-per-repo-test-user-script.md`)
 - [ ] 010 - Extend mc-test for deeper system coverage (`TODO/010-extend-mc-test.md`)
 - [ ] 011 - Improve merge-conflict review UX (`TODO/011-merge-conflict-review-ux.md`)

@@ -46,14 +46,26 @@ Cons:
 
 ### C) `github.com/creack/pty` + a terminal emulator (e.g., `github.com/hinshun/vt10x`)
 
-- XXX why not go-expect with vt10x?  
+Note: a hybrid `go-expect` + `vt10x` approach is also viable:
+- `go-expect` gives you a friendlier “expect/send” API over a PTY.
+- `vt10x` gives you a rendered screen buffer you can assert against.
+
+Using `creack/pty` directly is lower-level but keeps dependencies minimal and
+gives full control. Using `go-expect` can simplify prompt-driven flows; for
+full-screen apps, you still need a screen model (e.g., `vt10x`) if you want to
+assert on what the user *sees* rather than raw ANSI output.
 
 Approach:
 - Spawn process under a PTY (`creack/pty`).
 - Feed output bytes into a VT/xterm emulator (`vt10x`) to maintain a screen buffer.
-  - XXX how?  what does this mean?
+  - Conceptually: read bytes from the PTY master as the program runs, and write
+    those bytes into the emulator. The emulator applies ANSI/VT escape sequences
+    and maintains a 2D grid of cells. Tests can then snapshot/assert on that grid.
 - Send key sequences to the PTY.
-  - XXX how?
+  - Conceptually: write bytes to the PTY master that represent keystrokes. For
+    example, `\x1b` is Escape, `\r` is Enter; arrow keys are escape sequences
+    like `\x1b[A`. For robust input, consider using `go-expect`’s helpers or a
+    small key-encoding helper.
 - Assert on the emulator’s screen state (or snapshot it).
 
 Pros:

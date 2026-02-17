@@ -10,12 +10,12 @@ Also: one or more “mob-consensus users” may themselves be AI agents. The UI
 should support both:
 
 - a human-in-the-loop approval gate for commits/merges/pushes, and
-- automation-friendly flags for agent orchestration 
+- automation-friendly flags for agent orchestration.
 
 Goal: add an interactive, Codex-like review loop that can explain
 diffs in context and guide users through “approve / edit / abort”,
 with LLM assistance. This should reduce reliance on
-`mergetool`/`difftool` see TODO 011.
+`mergetool`/`difftool` (see TODO 011).
 
 ## Proposed UX (interactive review loop)
 
@@ -31,11 +31,28 @@ After a merge (clean or conflicted) — or before committing/pushing any changes
   - optionally answer: “how does this fit into the larger repo context?”
 - Ask the user what to do next:
   - approve this change and continue,
-  - open editor (`$EDITOR`) to adjust the file,
-    - XXX how well will this work with e.g. vscode?
-    - XXX we need to be able to open the editor in a merge or diff mode so the user can see the changes in context and make informed edits.
-    - XXX do we need to restrict usage to neovim?  pros and cons.
-    - XXX does a lsp interface make more sense here?  pros and cons.
+  - open editor (`$EDITOR`) to adjust the file:
+    - Baseline: run `$EDITOR path/to/file` and ask the user to re-run the
+      review step when finished.
+    - Waiting/blocking: editors differ. Terminal editors (vim/nvim) block by
+      default; GUI editors often need a “wait” flag (e.g. VS Code `code --wait`)
+      or a wrapper script. We should make this explicit/configurable.
+    - Merge/diff context: for conflicted files, “open file” is often not enough.
+      Options:
+      - Use `git mergetool` / `git difftool` as the editor integration layer
+        (honors user config; works with many tools).
+      - Add explicit helpers for common editors:
+        - Neovim/Vim: diff mode (`nvim -d A B`), three-way merge views via git’s
+          mergetool integration, etc.
+        - VS Code: use `code --diff A B` for review; rely on VS Code’s merge
+          editor for conflict-marker files when opened normally.
+    - We should not restrict usage to Neovim, but we *can* provide optional
+      Neovim-specific enhancements (RPC/UI attach) for a higher-quality and more
+      automatable experience.
+    - LSP: likely not the right primary interface for this flow. LSP can help
+      with “what is this symbol/where is it used” context, but it doesn’t solve
+      diff review, approval gating, or merge conflict resolution by itself. Treat
+      LSP integration as a later enhancement, not a prerequisite.
   - re-run a tool (`git mergetool`, `git add -p`, etc.),
   - abort.
 - Only after approval should `mob-consensus` commit (and optionally push).
@@ -53,11 +70,16 @@ be able to “self-approve” or bypass confirmations.
   gracefully.
 - Wrong summaries: user must be encouraged to inspect the raw diff and/or open
   the file.
-- XXX testing -- how would we even test this?  mock the LLM calls?
+- Testing approach:
+  - Keep an explicit “review state machine” that is pure/testable (what files to
+    show next, what it means to approve, what transitions are allowed).
+  - Put LLM calls behind an interface and use a deterministic fake in unit tests.
+  - For editor integration, use a fake `$EDITOR` script in tests that modifies
+    the file and exits (similar to `mc-test`’s non-interactive editor helper).
+  - Reserve PTY/TUI driving (vim panes, etc.) for optional system tests (see
+    TODO 013).
 
 ## Plan
-
-- XXX update the following according to the answers to the above XXX questions
 
 - [ ] 012.1 Define approval semantics:
   - [ ] 012.1.1 Per file vs per hunk vs per commit approval.
@@ -65,6 +87,8 @@ be able to “self-approve” or bypass confirmations.
 - [ ] 012.2 Define review surfaces (no-LLM baseline):
   - [ ] 012.2.1 Raw diff presentation (`git diff`, pager, editor, or TUI).
   - [ ] 012.2.2 Edit loop (`$EDITOR`, `git add -p`, re-run merge tools).
+  - [ ] 012.2.3 Editor integration policy (how to wait/block; wrappers for GUI editors like `code --wait`).
+  - [ ] 012.2.4 Merge/diff helpers (use `git mergetool`/`git difftool` vs editor-specific diff/merge modes).
 - [ ] 012.3 Add optional LLM “review assistant”:
   - [ ] 012.3.1 Summarize changes per file/hunk.
   - [ ] 012.3.2 Answer “why/how does this fit in?” based on repo context.
@@ -77,6 +101,7 @@ be able to “self-approve” or bypass confirmations.
   - [ ] 012.5.2 Prevent push unless explicitly approved.
   - [ ] 012.5.3 Ensure LLM output can’t be treated as commands.
 - [ ] 012.6 Testing:
-  - [ ] 012.6.1 `go test` coverage for approval-state transitions.
-  - [ ] 012.6.2 `mc-test --interactive` scenario exercising the full review loop.
-
+  - [ ] 012.6.1 `go test` coverage for approval-state transitions (pure state machine).
+  - [ ] 012.6.2 Mock/fake LLM calls for deterministic tests.
+  - [ ] 012.6.3 Fake `$EDITOR` script for edit-loop tests.
+  - [ ] 012.6.4 `mc-test --interactive` scenario exercising the full review loop (optionally with TODO 013 PTY tooling).
