@@ -709,17 +709,19 @@ func runInit(ctx context.Context, opts options, user, currentBranch string, stdo
 		return usageError{Err: err}
 	}
 
-	base := resolveBase(opts, currentBranch)
-	if base == "" || base == "HEAD" {
-		return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --base <ref>)")}
-	}
-
 	title := fmt.Sprintf("mob-consensus init (twig=%s, remote=%s)", twig, remote)
 	if opts.plan || opts.dryRun {
+		baseSuggestion := resolveBase(opts, currentBranch)
+		baseHint := ""
+		if baseSuggestion == "" || baseSuggestion == "HEAD" {
+			baseSuggestion = "<ref>"
+			baseHint = " (hint: pass --base <ref>)"
+		}
+
 		fmt.Fprintln(stdout, title)
 		fmt.Fprintf(stdout, "  1) Fetch remote refs:\n       git fetch %s\n", remote)
 		fmt.Fprintf(stdout, "  2) If %s/%s exists, run: mob-consensus join --twig %s\n", remote, twig, twig)
-		fmt.Fprintf(stdout, "     Otherwise run:        mob-consensus start --twig %s --base %s\n", twig, base)
+		fmt.Fprintf(stdout, "     Otherwise run:        mob-consensus start --twig %s --base %s%s\n", twig, baseSuggestion, baseHint)
 		return nil
 	}
 
@@ -743,6 +745,14 @@ func runInit(ctx context.Context, opts options, user, currentBranch string, stdo
 	nextCmd := cmdStart
 	if exists {
 		nextCmd = cmdJoin
+	}
+
+	base := ""
+	if nextCmd == cmdStart {
+		base = resolveBase(opts, currentBranch)
+		if base == "" || base == "HEAD" {
+			return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --base <ref>)")}
+		}
 	}
 
 	if !opts.yes {

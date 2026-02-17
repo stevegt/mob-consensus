@@ -528,6 +528,37 @@ func TestRunInitSuggestsStartThenJoin(t *testing.T) {
 	}
 }
 
+func TestRunInitJoinDetachedHeadDoesNotRequireBase(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	// Publish the shared twig as the first group member would.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+
+	// Put the clone into a detached-HEAD state. This simulates real-world cases
+	// like `git checkout <sha>`, `git bisect`, or CI checkouts. `mob-consensus init`
+	// should still be able to *join* an existing twig without needing --base.
+	gitCmd(t, bob, "checkout", "--detach", "HEAD")
+	if got := strings.TrimSpace(gitCmd(t, bob, "rev-parse", "--abbrev-ref", "HEAD")); got != "HEAD" {
+		t.Fatalf("expected detached HEAD, got %q", got)
+	}
+
+	withCwd(t, bob)
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"init", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(init) detached HEAD err=%v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(gitCmd(t, bob, "rev-parse", "--abbrev-ref", "HEAD")); got != "bob/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "bob/feature-x")
+	}
+}
+
 func TestRunCreateBranchDirtyFails(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
