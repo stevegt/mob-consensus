@@ -303,7 +303,7 @@ func TestRunHelpOutsideRepo(t *testing.T) {
 		t.Fatalf("run(-h) err=%v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "Usage: mob-consensus") {
+	if !strings.Contains(got, "Usage:\n  mob-consensus") {
 		t.Fatalf("help output missing usage header:\n%s", got)
 	}
 	if !strings.Contains(got, "git config --local user.email") {
@@ -435,6 +435,96 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	}
 	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
 		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+	}
+}
+
+func TestRunStartOnboardingFlow(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+	withCwd(t, alice)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"start", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(start) err=%v\n%s", err, out.String())
+	}
+
+	if got := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+	}
+
+	// Shared twig and personal branch are pushed to the remote.
+	if out := gitCmd(t, seed, "ls-remote", "--heads", "origin", "feature-x"); !strings.Contains(out, "refs/heads/feature-x") {
+		t.Fatalf("expected remote to have feature-x, got:\n%s", out)
+	}
+	if out := gitCmd(t, seed, "ls-remote", "--heads", "origin", "alice/feature-x"); !strings.Contains(out, "refs/heads/alice/feature-x") {
+		t.Fatalf("expected remote to have alice/feature-x, got:\n%s", out)
+	}
+}
+
+func TestRunJoinOnboardingFlow(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	// Publish the shared twig as the first group member would.
+	gitSwitchCreate(t, seed, "feature-x")
+	gitCmd(t, seed, "push", "-u", "origin", "feature-x")
+
+	bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+	withCwd(t, bob)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"join", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(join) err=%v\n%s", err, out.String())
+	}
+
+	if got := strings.TrimSpace(gitCmd(t, bob, "rev-parse", "--abbrev-ref", "HEAD")); got != "bob/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "bob/feature-x")
+	}
+
+	if out := gitCmd(t, seed, "ls-remote", "--heads", "origin", "bob/feature-x"); !strings.Contains(out, "refs/heads/bob/feature-x") {
+		t.Fatalf("expected remote to have bob/feature-x, got:\n%s", out)
+	}
+}
+
+func TestRunInitSuggestsStartThenJoin(t *testing.T) {
+	origin := initBareRemote(t)
+
+	seed := initRepo(t)
+	gitCmd(t, seed, "remote", "add", "origin", origin)
+	gitCmd(t, seed, "push", "-u", "origin", "main")
+
+	{
+		alice := cloneRepo(t, origin, "Alice", "alice@example.com")
+		withCwd(t, alice)
+
+		var out bytes.Buffer
+		if err := run(context.Background(), []string{"init", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+			t.Fatalf("run(init) first member err=%v\n%s", err, out.String())
+		}
+		if got := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
+			t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+		}
+	}
+
+	{
+		bob := cloneRepo(t, origin, "Bob", "bob@example.com")
+		withCwd(t, bob)
+
+		var out bytes.Buffer
+		if err := run(context.Background(), []string{"init", "--twig", "feature-x", "--yes"}, &out, io.Discard); err != nil {
+			t.Fatalf("run(init) next member err=%v\n%s", err, out.String())
+		}
+		if got := strings.TrimSpace(gitCmd(t, bob, "rev-parse", "--abbrev-ref", "HEAD")); got != "bob/feature-x" {
+			t.Fatalf("current branch=%q, want %q", got, "bob/feature-x")
+		}
 	}
 }
 

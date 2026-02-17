@@ -1,4 +1,8 @@
-Usage: mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+Usage:
+  mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+  mob-consensus init  [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
+  mob-consensus start [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
+  mob-consensus join  [-c] [--twig NAME]            [--remote NAME] [--plan|--dry-run] [--yes]
 {{- if .CurrentBranch}}
 Current branch: {{.CurrentBranch}} (twig: {{.Twig}})
 {{- end}}
@@ -39,6 +43,11 @@ Remote:
   {{- end}}
 
 Getting started (first group member):
+  Automated (recommended):
+       mob-consensus start --twig {{.ExampleTwig}}
+       # or preview the exact commands:
+       mob-consensus start --twig {{.ExampleTwig}} --plan
+
   1) Starting from any base branch (e.g., main), create the shared twig branch:
        git switch -c {{.ExampleTwig}}
   2) Push the shared twig branch (required so others can start from it):
@@ -50,6 +59,11 @@ Getting started (first group member):
        git push -u {{.Remote}} {{.UserBranch}}
 
 Getting started (next group members):
+  Automated (recommended):
+       mob-consensus join --twig {{.ExampleTwig}}
+       # or preview the exact commands:
+       mob-consensus join --twig {{.ExampleTwig}} --plan
+
   1) Get the shared twig branch locally (example uses <remote>):
        git fetch {{.Remote}}
        git switch -c {{.ExampleTwig}} {{.Remote}}/{{.ExampleTwig}}
@@ -64,6 +78,9 @@ Getting started (next group members):
        # (If {{.PeerBranch}} isn't a local ref, mob-consensus will try to resolve it to {{.PeerRef}} and ask for confirmation.)
 
 Commands:
+  init           Fetch, detect whether {{.Remote}}/{{.ExampleTwig}} exists, then suggest start vs join and (optionally) run it.
+  start          First member flow: create/push shared twig, create/push your {{.User}}/ branch.
+  join           Next member flow: fetch, create local twig from {{.Remote}}/{{.ExampleTwig}}, create/push your {{.User}}/ branch.
   (no args)     Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).
   OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
   -b BASE       Create {{.UserBranch}} from BASE and switch to it (does not push).
@@ -74,6 +91,12 @@ Notes:
   - Use -n to disable automatic pushes after commits/merges.
 
 Flags:
+  --twig NAME     shared twig branch name (e.g., {{.ExampleTwig}})
+  --base REF      base ref for `start` (default: current branch)
+  --remote NAME   remote for fetch/push (required when multiple remotes exist)
+  --plan          print the command plan (commands + explanations) and exit
+  --dry-run       print commands only; no prompts or execution
+  --yes           accept defaults and run non-interactively
   -F force run even if not on a <user>/ branch
   -b create new branch named <user>/<twig> based on BASE_BRANCH
   -n no automatic push after commit
