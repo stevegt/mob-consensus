@@ -559,6 +559,189 @@ func TestRunInitJoinDetachedHeadDoesNotRequireBase(t *testing.T) {
 	}
 }
 
+func TestIsDirtyCleanAndDirty(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	ctx := context.Background()
+	dirty, err := isDirty(ctx)
+	if err != nil {
+		t.Fatalf("isDirty() err=%v", err)
+	}
+	if dirty {
+		t.Fatalf("isDirty()=true, want false")
+	}
+
+	writeFile(t, repo, "untracked.txt", "dirty\n")
+	dirty, err = isDirty(ctx)
+	if err != nil {
+		t.Fatalf("isDirty() err=%v", err)
+	}
+	if !dirty {
+		t.Fatalf("isDirty()=false, want true")
+	}
+}
+
+func TestResolveTwigPrompting(t *testing.T) {
+	{
+		var stderr bytes.Buffer
+		withStdin(t, "\n")
+		twig, err := resolveTwig(cmdStart, options{}, "main", "alice", &stderr)
+		if err != nil {
+			t.Fatalf("resolveTwig(default) err=%v", err)
+		}
+		if twig != "feature-x" {
+			t.Fatalf("resolveTwig(default)=%q, want %q", twig, "feature-x")
+		}
+		if !strings.Contains(stderr.String(), "Twig name") {
+			t.Fatalf("expected prompt on stderr, got:\n%s", stderr.String())
+		}
+	}
+
+	{
+		var stderr bytes.Buffer
+		withStdin(t, "dev\n")
+		twig, err := resolveTwig(cmdStart, options{}, "main", "alice", &stderr)
+		if err != nil {
+			t.Fatalf("resolveTwig(custom) err=%v", err)
+		}
+		if twig != "dev" {
+			t.Fatalf("resolveTwig(custom)=%q, want %q", twig, "dev")
+		}
+	}
+
+	{
+		// Non-interactive modes require --twig unless it can be inferred.
+		var stderr bytes.Buffer
+		_, err := resolveTwig(cmdStart, options{yes: true}, "main", "alice", &stderr)
+		if err == nil || !strings.Contains(err.Error(), "requires --twig") {
+			t.Fatalf("resolveTwig(noninteractive) err=%v, want requires --twig", err)
+		}
+	}
+
+	{
+		// When the current branch already includes a twig, infer it.
+		var stderr bytes.Buffer
+		twig, err := resolveTwig(cmdStart, options{}, "alice/feature-x", "alice", &stderr)
+		if err != nil {
+			t.Fatalf("resolveTwig(infer user/twig) err=%v", err)
+		}
+		if twig != "feature-x" {
+			t.Fatalf("resolveTwig(infer user/twig)=%q, want %q", twig, "feature-x")
+		}
+	}
+}
+
+func TestResolveRemotePromptingAndErrors(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	ctx := context.Background()
+
+	// Add multiple remotes but do not set an upstream; this forces the prompt
+	// path in resolveRemote (no deterministic suggestion).
+	gitCmd(t, repo, "remote", "add", "origin", repo)
+	gitCmd(t, repo, "remote", "add", "jj", repo)
+
+	{
+		// Non-interactive modes require --remote when multiple remotes exist.
+		var stderr bytes.Buffer
+		_, err := resolveRemote(ctx, cmdStart, options{yes: true}, &stderr)
+		if err == nil || !strings.Contains(err.Error(), "requires --remote") {
+			t.Fatalf("resolveRemote(noninteractive) err=%v, want requires --remote", err)
+		}
+	}
+
+	{
+		// Interactive prompt picks an explicit remote.
+		var stderr bytes.Buffer
+		withStdin(t, "origin\n")
+		remote, err := resolveRemote(ctx, cmdStart, options{}, &stderr)
+		if err != nil {
+			t.Fatalf("resolveRemote(prompt) err=%v", err)
+		}
+		if remote != "origin" {
+			t.Fatalf("resolveRemote(prompt)=%q, want %q", remote, "origin")
+		}
+		if !strings.Contains(stderr.String(), "Pick remote") {
+			t.Fatalf("expected prompt on stderr, got:\n%s", stderr.String())
+		}
+	}
+
+	{
+		// Unknown remote should error with a clear message.
+		var stderr bytes.Buffer
+		withStdin(t, "nope\n")
+		_, err := resolveRemote(ctx, cmdStart, options{}, &stderr)
+		if err == nil || !strings.Contains(err.Error(), "unknown remote") {
+			t.Fatalf("resolveRemote(unknown) err=%v, want unknown remote", err)
+		}
+	}
+}
+
+func TestRunGitPlanModesAndConfirm(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	ctx := context.Background()
+
+	steps := []gitPlanStep{
+		{
+			Explain: "Verify we're in a Git worktree",
+			Args: func(ctx context.Context) ([]string, error) {
+				return []string{"rev-parse", "--is-inside-work-tree"}, nil
+			},
+		},
+	}
+
+	{
+		var out bytes.Buffer
+		if err := runGitPlan(ctx, options{plan: true}, "plan title", steps, &out, io.Discard); err != nil {
+			t.Fatalf("runGitPlan(plan) err=%v", err)
+		}
+		if !strings.Contains(out.String(), "plan title") || !strings.Contains(out.String(), "git rev-parse") {
+			t.Fatalf("runGitPlan(plan) output missing expected lines:\n%s", out.String())
+		}
+	}
+
+	{
+		var out bytes.Buffer
+		if err := runGitPlan(ctx, options{dryRun: true}, "dry run title", steps, &out, io.Discard); err != nil {
+			t.Fatalf("runGitPlan(dry-run) err=%v", err)
+		}
+		if strings.TrimSpace(out.String()) != "git rev-parse --is-inside-work-tree" {
+			t.Fatalf("runGitPlan(dry-run) output=%q", out.String())
+		}
+	}
+
+	{
+		// Confirmed execution runs the step.
+		var out bytes.Buffer
+		var stderr bytes.Buffer
+		withStdin(t, "y\n")
+		if err := runGitPlan(ctx, options{}, "exec title", steps, &out, &stderr); err != nil {
+			t.Fatalf("runGitPlan(exec) err=%v\n%s", err, out.String())
+		}
+		if !strings.Contains(out.String(), "Step 1/1") {
+			t.Fatalf("runGitPlan(exec) output missing step header:\n%s", out.String())
+		}
+		if !strings.Contains(stderr.String(), "Run this?") {
+			t.Fatalf("runGitPlan(exec) expected confirmation prompt, got:\n%s", stderr.String())
+		}
+	}
+
+	{
+		// Declining confirmation aborts.
+		var out bytes.Buffer
+		var stderr bytes.Buffer
+		withStdin(t, "n\n")
+		err := runGitPlan(ctx, options{}, "exec title", steps, &out, &stderr)
+		if err == nil || !strings.Contains(err.Error(), "aborted") {
+			t.Fatalf("runGitPlan(abort) err=%v, want aborted", err)
+		}
+	}
+}
+
 func TestRunCreateBranchDirtyFails(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
