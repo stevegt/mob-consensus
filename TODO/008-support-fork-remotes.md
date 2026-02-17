@@ -60,16 +60,36 @@ Single config file (ex: `mob-consensus.toml` or `.mob-consensus.toml`):
   - Higher chance of merge conflicts if multiple people edit it at once.
   - Can become a “junk drawer” as settings accumulate.
 
-Config directory (ex: `.mob-consensus/` with `config.toml` and `remotes.d/`):
-- XXX use .mob-consensus/remotes/
+Config directory (ex: `.mob-consensus/`):
+- Common layouts:
+  - “One collaborator per file”: `.mob-consensus/remotes.d/jj.conf`
+  - “One collaborator per directory”: `.mob-consensus/u/alice/config` (or `.mob-consensus/users/alice/config`)
 - Pros:
   - Scales better: separate files for remotes/policy/templates reduces conflicts.
-  - Can go “one collaborator per file” (ex: `.mob-consensus/remotes.d/jj.conf`), which avoids
-    everyone editing the same file.
+  - “One collaborator per file/dir” avoids everyone editing the same file.
   - Easier to extend without turning one file into a wall of settings.
 - Cons:
   - More moving parts; less obvious for first-time users.
   - Slightly more work to document and implement.
+
+#### Per-collaborator subdirectory (`.mob-consensus/u/<collaborator>/…`)
+
+Idea: instead of a flat `remotes.d/`, make a per-collaborator directory. Example:
+- `.mob-consensus/u/alice/remote` (or `remote.url`)
+- `.mob-consensus/u/alice/defaults.conf` (defaults/policy that apply *when interacting with alice*)
+- `.mob-consensus/u/alice/notes.md` (optional human notes)
+
+Pros:
+- Natural place to store more than “remote URL” (ex: multiple forks, preferred merge target naming, trust/policy).
+- Less likely to conflict: each collaborator mostly edits their own directory.
+- Easier to grow later (new files) without inventing new top-level conventions.
+
+Cons:
+- Needs clear terminology: “user” here means *collaborator identity*, not the local OS user.
+  - XXX directory name is full email name, config file in directory
+    includes twig name 
+- Git remote names are local state; storing “remote = jj” in a repo-tracked file can be wrong on someone else’s machine unless we standardize remote naming (ex: remote name == collaborator id) or store URLs and have `mob-consensus init` add/verify remotes.
+- Risk of mixing in per-local-user defaults that should instead live in `.git/config` or a non-committed local file.
 
 ### Naming options
 
@@ -80,11 +100,13 @@ File:
 
 Directory:
 - `.mob-consensus/config.toml` (clear “tool-owned” area)
-- `.mob-consensus/remotes` (line-oriented remotes list)  XXX use this one
+- `.mob-consensus/remotes.d/` (one file per collaborator remote)
+- `.mob-consensus/u/<collaborator>/config` (per-collaborator directory)
 
 ### Format considerations
 
-- XXX does this matter if we're using .mob-consensus/remotes/ with one file per remote?
+- If we store “one collaborator per file/dir”, the exact format matters less because each unit is small.
+- If we store remote URLs, we must avoid accidentally committing tokens (recommend: document “no embedded credentials”).
 
 - TOML/YAML: friendlier for humans, but adds a parsing dependency in Go.
 - JSON: no extra deps, but unpleasant to hand-edit.
