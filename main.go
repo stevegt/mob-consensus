@@ -1172,6 +1172,10 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 		if err := gitRun(ctx, "mergetool", "-t", "vimdiff"); err != nil {
 			return err
 		}
+		unmerged, _ := gitOutputTrimmed(ctx, "ls-files", "--unmerged")
+		if unmerged != "" {
+			return errors.New("mob-consensus: unresolved merge conflicts remain after mergetool")
+		}
 	}
 
 	if _, err := os.Stat(mergeHeadPath); err != nil {
