@@ -100,7 +100,7 @@ This enables:
 Options:
 - Hard break: remove legacy modes immediately. (Simpler long-term;
   painful short-term.)
-  - XXX Steve is considering doing this
+  - XXX do this
 - Soft migrate (recommended):
   - XXX this makes less sense because the only current users are test cases
   - Keep legacy entrypoints as hidden aliases:
