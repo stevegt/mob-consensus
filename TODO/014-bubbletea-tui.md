@@ -50,7 +50,7 @@ scriptability (`--yes`, `--plan`, `--dry-run`) or non-TTY usage.
 
 ## Possible UI improvements vs current CLI
 
-- `mob-consensus` “no args” discovery:
+- `mob-consensus status` discovery:
   - Show related branches with ahead/behind/diverged badges; allow
     selecting a merge target.
 - `merge` flow:
@@ -83,4 +83,3 @@ scriptability (`--yes`, `--plan`, `--dry-run`) or non-TTY usage.
 - [ ] 014.5 Define testing strategy:
   - [ ] 014.5.1 Unit tests for TUI state transitions (pure Bubble Tea model).
   - [ ] 014.5.2 PTY-driven integration tests only if needed (coordinate with TODO 013).
-

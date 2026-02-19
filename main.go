@@ -6,7 +6,6 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -24,15 +23,12 @@ var usageTemplate string
 type command string
 
 const (
-	cmdLegacy command = ""
-	cmdInit   command = "init"
-	cmdStart  command = "start"
-	cmdJoin   command = "join"
+	cmdInit  command = "init"
+	cmdStart command = "start"
+	cmdJoin  command = "join"
 )
 
 type options struct {
-	cmd command
-
 	force       bool
 	baseBranch  string
 	noPush      bool
@@ -133,125 +129,9 @@ func (e branchNotFoundError) Error() string {
 
 func (e branchNotFoundError) Msg() string {
 	return fmt.Sprintf(
-		"mob-consensus: branch %q does not exist.\n\nPick a branch name from the list above (the same list shown by running `mob-consensus` with no args), then re-run:\n  mob-consensus <branch>",
+		"mob-consensus: branch %q does not exist.\n\nPick a branch name from the list above (the same list shown by running `mob-consensus status`), then re-run:\n  mob-consensus merge <branch>",
 		e.Branch,
 	)
-}
-
-func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
-	opts, showHelp, err := parseArgs(args)
-	if err != nil {
-		return usageError{Err: err}
-	}
-	if showHelp {
-		return printUsage(ctx, stdout)
-	}
-
-	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
-	if err != nil {
-		return err
-	}
-	user, err := branchUserFromEmail(ctx)
-	if err != nil {
-		return err
-	}
-
-	switch opts.cmd {
-	case cmdInit:
-		return runInit(ctx, opts, user, currentBranch, stdout, stderr)
-	case cmdStart:
-		return runStart(ctx, opts, user, currentBranch, stdout, stderr)
-	case cmdJoin:
-		return runJoin(ctx, opts, user, currentBranch, stdout, stderr)
-	default:
-		if opts.baseBranch != "" {
-			opts.force = true
-		}
-
-		if opts.baseBranch == "" {
-			if err := requireUserBranch(opts.force, user, currentBranch); err != nil {
-				return usageError{Err: err}
-			}
-		}
-
-		switch {
-		case opts.baseBranch != "":
-			return runCreateBranch(ctx, opts, user, stdout)
-		case opts.otherBranch == "":
-			if err := fetchSuggestedRemote(ctx, ""); err != nil {
-				return err
-			}
-			return runDiscovery(ctx, opts, currentBranch, stdout)
-		default:
-			if err := fetchSuggestedRemote(ctx, opts.otherBranch); err != nil {
-				return err
-			}
-			return runMerge(ctx, opts, currentBranch, stdout)
-		}
-	}
-}
-
-func parseArgs(args []string) (options, bool, error) {
-	if len(args) > 0 {
-		switch args[0] {
-		case "init":
-			return parseOnboardingArgs(cmdInit, args[1:])
-		case "start":
-			return parseOnboardingArgs(cmdStart, args[1:])
-		case "join":
-			return parseOnboardingArgs(cmdJoin, args[1:])
-		}
-	}
-	return parseLegacyArgs(args)
-}
-
-func parseLegacyArgs(args []string) (options, bool, error) {
-	var opts options
-	opts.cmd = cmdLegacy
-	fs := flag.NewFlagSet("mob-consensus", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	help := fs.Bool("h", false, "show help")
-	helpLong := fs.Bool("help", false, "show help")
-	fs.BoolVar(&opts.force, "F", false, "force run even if not on a <user>/ branch")
-	fs.StringVar(&opts.baseBranch, "b", "", "create new <user>/<twig> branch based on base branch")
-	fs.BoolVar(&opts.noPush, "n", false, "no automatic push after commits")
-	fs.BoolVar(&opts.commitDirty, "c", false, "commit existing uncommitted changes")
-
-	if err := fs.Parse(args); err != nil {
-		return options{}, false, err
-	}
-	rest := fs.Args()
-	if len(rest) > 0 {
-		opts.otherBranch = rest[0]
-	}
-	return opts, *help || *helpLong, nil
-}
-
-func parseOnboardingArgs(cmd command, args []string) (options, bool, error) {
-	var opts options
-	opts.cmd = cmd
-	fs := flag.NewFlagSet("mob-consensus "+string(cmd), flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	help := fs.Bool("h", false, "show help")
-	helpLong := fs.Bool("help", false, "show help")
-	fs.BoolVar(&opts.commitDirty, "c", false, "commit existing uncommitted changes (local only)")
-	fs.StringVar(&opts.twig, "twig", "", "shared twig branch name")
-	fs.StringVar(&opts.base, "base", "", "base ref (default: current branch)")
-	fs.StringVar(&opts.remote, "remote", "", "remote name to use for fetch/push")
-	fs.BoolVar(&opts.plan, "plan", false, "print the plan (commands + explanations) and exit")
-	fs.BoolVar(&opts.dryRun, "dry-run", false, "print commands only; no prompts or execution")
-	fs.BoolVar(&opts.yes, "yes", false, "accept defaults and run non-interactively")
-
-	if err := fs.Parse(args); err != nil {
-		return options{}, false, err
-	}
-	if fs.NArg() > 0 {
-		return options{}, false, fmt.Errorf("unexpected argument: %s", fs.Arg(0))
-	}
-	if opts.plan && opts.dryRun {
-		return options{}, false, errors.New("--plan and --dry-run are mutually exclusive")
-	}
-	return opts, *help || *helpLong, nil
 }
 
 type usageData struct {
@@ -777,7 +657,6 @@ func runInit(ctx context.Context, opts options, user, currentBranch string, stdo
 	}
 
 	next := opts
-	next.cmd = nextCmd
 	next.twig = twig
 	next.remote = remote
 	next.base = base
@@ -1105,7 +984,7 @@ func runMerge(ctx context.Context, opts options, currentBranch string, stdout io
 	if err != nil {
 		var nf branchNotFoundError
 		if errors.As(err, &nf) {
-			// Mirror `mob-consensus` without args by showing the related branch
+			// Mirror `mob-consensus status` by showing the related branch
 			// list, so the user can pick a valid branch.
 			_ = runDiscovery(ctx, options{}, currentBranch, stdout)
 		}

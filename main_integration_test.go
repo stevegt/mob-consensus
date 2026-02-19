@@ -1190,7 +1190,7 @@ func TestRequireUserBranchUsageError(t *testing.T) {
 	withCwd(t, repo)
 
 	var out bytes.Buffer
-	err := run(context.Background(), nil, &out, io.Discard)
+	err := run(context.Background(), []string{"status"}, &out, io.Discard)
 	var uerr usageError
 	if !errors.As(err, &uerr) {
 		t.Fatalf("expected usageError, got: %T %v", err, err)
@@ -1547,7 +1547,7 @@ func TestRunMergeBranchNotFoundShowsDiscovery(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	err := run(context.Background(), []string{"nobody/feature-x"}, &out, io.Discard)
+	err := run(context.Background(), []string{"merge", "nobody/feature-x"}, &out, io.Discard)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -1698,7 +1698,7 @@ func TestRunDiscoveryViaRun(t *testing.T) {
 	gitCmd(t, alice, "push", "-u", "origin", "alice/feature-x")
 
 	var out bytes.Buffer
-	if err := run(context.Background(), nil, &out, io.Discard); err != nil {
+	if err := run(context.Background(), []string{"status"}, &out, io.Discard); err != nil {
 		t.Fatalf("run discovery err=%v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "Related branches and their diffs") {
@@ -1735,7 +1735,7 @@ func TestRunMergeViaRun(t *testing.T) {
 	withStdin(t, "y\n")
 
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"-n", "bob/feature-x"}, &out, io.Discard); err != nil {
+	if err := run(context.Background(), []string{"merge", "-n", "bob/feature-x"}, &out, io.Discard); err != nil {
 		t.Fatalf("run merge err=%v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "skipping automatic push") {

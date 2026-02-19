@@ -1,10 +1,8 @@
 # TODO 015 - Cleaner interfaces for CLI, TUI, and Go API
 
 Context: `mob-consensus` currently has a mixed interface:
-- explicit subcommands: `init`, `start`, `join` (TODO 006)
-- “legacy” implicit modes:
-  - `mob-consensus` (no args) ⇒ discovery/status
-  - `mob-consensus <branch>` ⇒ merge
+- explicit subcommands: `init`, `start`, `join`, `status`, `merge` (TODO 006, TODO 015)
+- “legacy” implicit modes (to be removed):
   - `mob-consensus -b <base>` ⇒ create `<user>/<twig>`
 
 As we add multi-remote support (TODO 008), claiming (TODO 009), richer
@@ -65,8 +63,8 @@ Future (to align TODOs with namespacing):
 - `mob-consensus config …` (repo-tracked collaborator config; TODO 008)
 - `mob-consensus claim …` (work-item claiming; TODO 009)
 - `mob-consensus tui` or `--tui` (optional; TODO 014)
-  - XXX Consider whether TUI should be default when no args and a TTY
-    is detected, or if it should always be opt-in.
+  - Open question: should the TUI always be opt-in, or should
+    `mob-consensus` with no args on a TTY always launch it?
 
 ### Flag conventions
 
@@ -95,22 +93,20 @@ This enables:
 - Tests to run in-process for coverage (no need to spawn the CLI
   binary).
 
-## Compatibility / migration plan (avoid breaking users/tests abruptly)
+## Compatibility / migration plan
 
-Options:
-- Hard break: remove legacy modes immediately. (Simpler long-term;
-  painful short-term.)
-  - XXX do this
-- Soft migrate (recommended):
-  - XXX this makes less sense because the only current users are test cases
-  - Keep legacy entrypoints as hidden aliases:
-    - no args ⇒ `status`
-    - positional `<ref>` ⇒ `merge <ref>`
-    - `-b` ⇒ `branch create …`
-  - Print a one-line deprecation hint (“use `mob-consensus merge
-    <ref>`”) unless `--quiet`.
-  - Update docs/tests/scripts to use explicit commands first; remove
-    aliases later.
+Decision: **hard break** (remove legacy modes immediately).
+
+Rationale: today the main consumers are `go test` and `scripts/mc-test`,
+so it’s better to pay the churn cost now and end up with a simpler,
+less-surprising CLI.
+
+Plan:
+- Step 1 (done): `mob-consensus` no longer means “status”. Use
+  `mob-consensus status`.
+- Step 2 (done): replace positional merge with `mob-consensus merge
+  <ref>`.
+- Step 3 (next): replace `-b` with `mob-consensus branch create ...`.
 
 ## Testing impact
 
@@ -134,4 +130,3 @@ If command names/args change:
   - [ ] 015.7.1 `go test` integration tests updated for new CLI.
   - [ ] 015.7.2 `scripts/mc-test` scenarios updated.
   - [ ] 015.7.3 Coverage reports still written only under the harness root.
-

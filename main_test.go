@@ -114,68 +114,12 @@ func TestDiffStatusLine(t *testing.T) {
 	}
 }
 
-func TestParseArgs(t *testing.T) {
+func TestValidateOnboardingFlags(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name     string
-		args     []string
-		wantHelp bool
-		wantOpts options
-		wantErr  bool
-	}{
-		{
-			name:     "empty",
-			args:     nil,
-			wantHelp: false,
-			wantOpts: options{},
-		},
-		{
-			name:     "help_short",
-			args:     []string{"-h"},
-			wantHelp: true,
-			wantOpts: options{},
-		},
-		{
-			name:     "help_long",
-			args:     []string{"--help"},
-			wantHelp: true,
-			wantOpts: options{},
-		},
-		{
-			name: "flags_and_other",
-			args: []string{"-F", "-c", "-n", "-b", "feature-x", "bob/feature-x"},
-			wantOpts: options{
-				force:       true,
-				baseBranch:  "feature-x",
-				noPush:      true,
-				commitDirty: true,
-				otherBranch: "bob/feature-x",
-			},
-		},
-		{
-			name:    "unknown_flag",
-			args:    []string{"--nope"},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			opts, help, err := parseArgs(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("parseArgs() err=%v, wantErr=%v", err, tt.wantErr)
-			}
-			if help != tt.wantHelp {
-				t.Fatalf("parseArgs() help=%v, want %v", help, tt.wantHelp)
-			}
-			if tt.wantErr {
-				return
-			}
-			if opts != tt.wantOpts {
-				t.Fatalf("parseArgs() opts=%+v, want %+v", opts, tt.wantOpts)
-			}
-		})
+	flags := onboardingFlags{plan: true, dryRun: true}
+	if err := validateOnboardingFlags(flags); err == nil {
+		t.Fatalf("validateOnboardingFlags(plan=true,dryRun=true) err=nil, want error")
 	}
 }
 

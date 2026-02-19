@@ -30,7 +30,7 @@ scripts/mc-test init --unsafe /path/to/bob-clone bob
 
 cd /path/to/alice-clone
 mob-consensus -b feature-x
-mob-consensus
+mob-consensus status
 mob-consensus origin/bob/feature-x
 ```
 

@@ -5,7 +5,7 @@ Goal: replace `x/mob-consensus` (Bash) with a small, testable Go CLI while keepi
 Migrated from the coordination repo (formerly “TODO 004 - Rewrite mob-consensus in Go”).
 
 - [x] 001.1 Decide how it’s installed and upgraded (e.g., `go install ...@latest`) and where the Go entrypoint lives (e.g., `cmd/mob-consensus`).
-- [x] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `-b BASE_BRANCH`, `-c` commit dirty tree, `-n` no-push, `-F` force, `[OTHER_BRANCH]` merge mode.
+- [x] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `-b BASE_BRANCH`, `-c` commit dirty tree, `-n` no-push, `-F` force, `merge OTHER_BRANCH` merge mode.
 - [x] 001.3 Implement “related branches” discovery (branches ending in `/$twig`) and ahead/behind shortstat reporting.
 - [x] 001.4 Implement branch creation from local or remote bases (including setting upstream).
 - [x] 001.5 Implement merge flow: generate commit message with `Co-authored-by:` lines, run `git merge --no-commit --no-ff`, then launch mergetool/difftool.
@@ -64,9 +64,9 @@ Constraints:
 - The shared suffix `<twig>` is the coordination key; the tool looks for other branches ending in `/<twig>`.
 
 ### Modes
-- **Status / discovery mode (no args)**: `git fetch`, then lists related branches and prints whether each is ahead/behind/synced relative to the current branch.
+- **Status / discovery mode (`mob-consensus status`)**: `git fetch`, then lists related branches and prints whether each is ahead/behind/synced relative to the current branch.
 - **Branch bootstrap (`-b BASE_BRANCH`)**: creates a new `<user>/<twig>` branch based on `BASE_BRANCH` (does not push; it prints a suggested `git push -u ...`).
-- **Merge mode (`OTHER_BRANCH`)**: performs an explicit, manual merge of `OTHER_BRANCH` into the current branch, including conflict resolution and review, then commits and (optionally) pushes.
+- **Merge mode (`mob-consensus merge OTHER_BRANCH`)**: performs an explicit, manual merge of `OTHER_BRANCH` into the current branch, including conflict resolution and review, then commits and (optionally) pushes.
 
 ## How It Builds Multilateral Consensus
 “Consensus” here is not a distributed-systems quorum protocol; it’s a repeatable social/technical workflow that creates a shared, auditable integration point:
@@ -88,9 +88,9 @@ Constraints:
 1. Each collaborator creates their own branch for the same twig (from a shared base):
    - Example: `mob-consensus -b feature-x` → creates `<user>/feature-x` and prints a suggested `git push -u ...`.
 2. Collaborators work normally (edit/commit/push on their own `<user>/<twig>` branches).
-3. Periodically, anyone runs `mob-consensus` (no args) to see which sibling branches are ahead/behind/diverged.
+3. Periodically, anyone runs `mob-consensus status` to see which sibling branches are ahead/behind/diverged.
 4. When it’s time to converge, pick a sibling branch and merge it into the current branch:
-   - Example: `mob-consensus jj/feature-x`
+   - Example: `mob-consensus merge jj/feature-x`
    - Resolve conflicts (mergetool), review changes (difftool), commit (with co-authors), push (unless `-n`).
 5. Repeat until the relevant sibling branches are “synced”, or until the group agrees the session’s integrated state is complete.
 

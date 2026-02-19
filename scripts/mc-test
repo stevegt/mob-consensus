@@ -476,10 +476,10 @@ scenario_discovery() {
   run git -C "$root/$bob" push
 
   local out
-  out="$( (cd "$root/$leader" && "$mc_bin") 2>&1 )"
+  out="$( (cd "$root/$leader" && "$mc_bin" status) 2>&1 )"
   assert_contains "$out" "remotes/origin/$bob/$twig is ahead"
 
-  out="$( (cd "$root/$bob" && "$mc_bin") 2>&1 )"
+  out="$( (cd "$root/$bob" && "$mc_bin" status) 2>&1 )"
   assert_contains "$out" "remotes/origin/$leader/$twig is behind"
 
   run git -C "$root/$leader" switch "$leader/$twig"
@@ -488,7 +488,7 @@ scenario_discovery() {
   run git -C "$root/$leader" commit -m "Leader change"
   run git -C "$root/$leader" push
 
-  out="$( (cd "$root/$leader" && "$mc_bin") 2>&1 )"
+  out="$( (cd "$root/$leader" && "$mc_bin" status) 2>&1 )"
   assert_contains "$out" "remotes/origin/$bob/$twig has diverged"
 }
 
@@ -587,12 +587,12 @@ scenario_dirty() {
   echo "dirty-test leader uncommitted change" >>"$leader_repo/README.md"
 
   local out
-  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig" 2>&1)"; then
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig" 2>&1)"; then
     die "expected mob-consensus merge to fail on dirty tree"
   fi
   assert_contains "$out" "dirty"
 
-  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -c "origin/$other/$twig"
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge -c "origin/$other/$twig"
   assert_clean "$leader_repo"
 
   local subjects
@@ -636,7 +636,7 @@ scenario_smartpush() {
   run git -C "$other_repo" commit -m "Smartpush case1 ($other)"
   run git -C "$other_repo" push
 
-  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig"
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig"
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
 
   # Case 2: multiple remotes, no upstream, no pushDefault -> smartPush should error.
@@ -652,7 +652,7 @@ scenario_smartpush() {
   run git -C "$other_repo" push
 
   local out
-  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig" 2>&1)"; then
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig" 2>&1)"; then
     die "expected smartPush to fail with multiple remotes and no upstream"
   fi
   assert_contains "$out" "cannot push"
@@ -669,7 +669,7 @@ scenario_smartpush() {
   run git -C "$other_repo" commit -m "Smartpush case2b ($other)"
   run git -C "$other_repo" push
 
-  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "origin/$other/$twig"
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig"
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
 
   run_maybe git -C "$leader_repo" config --local --unset remote.pushDefault
@@ -691,14 +691,14 @@ scenario_multiremote_fetch() {
   run_maybe git -C "$leader_repo" branch --unset-upstream
 
   local out
-  if out="$( (cd "$leader_repo" && "$mc_bin") 2>&1 )"; then
+  if out="$( (cd "$leader_repo" && "$mc_bin" status) 2>&1 )"; then
     die "expected discovery to fail with multiple remotes and no upstream"
   fi
   assert_contains "$out" "multiple remotes"
 
   run git -C "$leader_repo" fetch origin
   run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
-  out="$( (cd "$leader_repo" && "$mc_bin") 2>&1 )"
+  out="$( (cd "$leader_repo" && "$mc_bin" status) 2>&1 )"
   assert_contains "$out" "Related branches and their diffs"
 
   run git -C "$leader_repo" remote remove jj
@@ -761,7 +761,7 @@ scenario_converge() {
     local repo="$root/$u"
     run git -C "$repo" switch "$u/$twig"
     local out
-    out="$( (cd "$repo" && "$mc_bin") 2>&1 )"
+    out="$( (cd "$repo" && "$mc_bin" status) 2>&1 )"
     for peer in $users; do
       if [[ "$peer" == "$u" ]]; then
         continue

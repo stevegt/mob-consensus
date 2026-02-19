@@ -47,7 +47,7 @@ and produce a repeatable coverage report.
   - [x] 010.2.1 Run `mob-consensus -b <twig>` twice; assert branch unchanged and no error.
   - [x] 010.2.2 Verify push advice contains the selected remote or a placeholder when ambiguous.
 - [x] 010.3 Add scenario `dirty`:
-  - [x] 010.3.1 Make an uncommitted tracked change; run `mob-consensus OTHER_BRANCH`; assert non-zero + “dirty” message.
+  - [x] 010.3.1 Make an uncommitted tracked change; run `mob-consensus merge OTHER_BRANCH`; assert non-zero + “dirty” message.
   - [x] 010.3.2 Repeat with `-c`; assert an auto-commit is created before the merge and the worktree ends clean.
 - [x] 010.4 Add scenario `smartpush`:
   - [x] 010.4.1 No upstream + single remote: after merge/commit, assert `-u` upstream gets set.

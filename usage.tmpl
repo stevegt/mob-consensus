@@ -1,5 +1,7 @@
 Usage:
-  mob-consensus [-cFn] [-b BASE_BRANCH] [OTHER_BRANCH]
+  mob-consensus status [-cF]
+  mob-consensus merge  [-cFn] OTHER_BRANCH
+  mob-consensus [-cF] -b BASE_BRANCH
   mob-consensus init  [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
   mob-consensus start [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
   mob-consensus join  [-c] [--twig NAME]            [--remote NAME] [--plan|--dry-run] [--yes]
@@ -73,20 +75,20 @@ Getting started (next group members):
   3) Push your personal branch:
        git push -u {{.Remote}} {{.UserBranch}}
   4) Use mob-consensus to converge:
-       mob-consensus
-       mob-consensus {{.PeerBranch}}
+       mob-consensus status
+       mob-consensus merge {{.PeerBranch}}
        # (If {{.PeerBranch}} isn't a local ref, mob-consensus will try to resolve it to {{.PeerRef}} and ask for confirmation.)
 
 Commands:
   init           Fetch, detect whether {{.Remote}}/{{.ExampleTwig}} exists, then suggest start vs join and (optionally) run it.
   start          First member flow: create/push shared twig, create/push your {{.User}}/ branch.
   join           Next member flow: fetch, create local twig from {{.Remote}}/{{.ExampleTwig}}, create/push your {{.User}}/ branch.
-  (no args)     Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).
-  OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
+  status         Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).
+  merge OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
   -b BASE       Create {{.UserBranch}} from BASE and switch to it (does not push).
 
 Notes:
-  - For discovery/merge, you must be on a {{.User}}/ branch (use -F to override).
+  - For status/merge, you must be on a {{.User}}/ branch (use -F to override).
   - If your working tree is dirty, use -c to commit it first, or clean it manually.
   - Use -n to disable automatic pushes after commits/merges.
 
