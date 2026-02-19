@@ -49,8 +49,15 @@ Core workflow:
   ahead/behind/diverged/synced.
 - `mob-consensus merge <ref>`: merge `<ref>` into the current branch
   (supports multi-remote shorthand resolution per TODO 008).
-- `mob-consensus branch create --twig <twig> [--from <ref>]`:
+- `mob-consensus branch create <twig> [--from <ref>]`:
   create/switch to `<user>/<twig>` from a base ref (replaces `-b`).
+  - Recommended default: if `--from` is not provided, default it to
+    the current local branch name (like a real user would do before
+    running mob-consensus). If the repo is in detached HEAD, error
+    with a clear hint to pass `--from <ref>`.
+  - Recommended UX: print the exact operation (ex: “create
+    alice/feature-x from feature-x”) and ask for confirmation unless
+    `--yes` is set.
 
 Onboarding (keep existing, but consider grouping):
 - `mob-consensus init` (suggest start vs join)
@@ -121,7 +128,10 @@ If command names/args change:
 ## Subtasks
 
 - [ ] 015.1 Write the CLI contract (commands, args, exit codes).
-- [ ] 015.2 Decide naming: `status` vs `discover`, and `branch create` shape (`--twig/--from` vs positional).
+- [ ] 015.2 Decide naming: `status` vs `discover`, and `branch create` UX details:
+  - Recommended: `mob-consensus branch create <twig> [--from <ref>]`.
+  - Recommended: default `--from` to the current branch when possible;
+    require `--from` in detached HEAD.
 - [ ] 015.3 Pick a compatibility strategy (hard break vs soft migrate) and document it in `usage.tmpl`.
 - [ ] 015.4 Introduce Cobra scaffolding and map commands to existing logic.
 - [ ] 015.5 Define the engine package boundary (types + interfaces) and move non-interactive logic out of `main`.
