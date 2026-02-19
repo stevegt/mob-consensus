@@ -108,13 +108,6 @@ Rationale: today the main consumers are `go test` and `scripts/mc-test`,
 so it’s better to pay the churn cost now and end up with a simpler,
 less-surprising CLI.
 
-Plan:
-- Step 1 (done): `mob-consensus` no longer means “status”. Use
-  `mob-consensus status`.
-- Step 2 (done): replace positional merge with `mob-consensus merge
-  <ref>`.
-- Step 3 (next): replace `-b` with `mob-consensus branch create ...`.
-
 ## Testing impact
 
 If command names/args change:
@@ -133,6 +126,9 @@ If command names/args change:
   - Recommended: default `--from` to the current branch when possible;
     require `--from` in detached HEAD.
 - [ ] 015.3 Pick a compatibility strategy (hard break vs soft migrate) and document it in `usage.tmpl`.
+- [x] 015.8 Hard break step 1: require explicit `mob-consensus status` (no “no-args discovery”).
+- [x] 015.9 Hard break step 2: require explicit `mob-consensus merge <ref>` (no positional merge).
+- [ ] 015.10 Hard break step 3: replace `-b` with `mob-consensus branch create <twig> [--from <ref>]`.
 - [ ] 015.4 Introduce Cobra scaffolding and map commands to existing logic.
 - [ ] 015.5 Define the engine package boundary (types + interfaces) and move non-interactive logic out of `main`.
 - [ ] 015.6 Add TUI entrypoint hooks that call the same engine (coordinate with TODO 014).
