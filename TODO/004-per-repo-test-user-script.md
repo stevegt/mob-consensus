@@ -29,9 +29,9 @@ scripts/mc-test init --unsafe /path/to/alice-clone alice
 scripts/mc-test init --unsafe /path/to/bob-clone bob
 
 cd /path/to/alice-clone
-mob-consensus -b feature-x
+mob-consensus branch create feature-x
 mob-consensus status
-mob-consensus origin/bob/feature-x
+mob-consensus merge origin/bob/feature-x
 ```
 
 ## Comparison with TODO 002 and TODO 003

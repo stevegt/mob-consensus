@@ -5,7 +5,7 @@ Goal: replace `x/mob-consensus` (Bash) with a small, testable Go CLI while keepi
 Migrated from the coordination repo (formerly “TODO 004 - Rewrite mob-consensus in Go”).
 
 - [x] 001.1 Decide how it’s installed and upgraded (e.g., `go install ...@latest`) and where the Go entrypoint lives (e.g., `cmd/mob-consensus`).
-- [x] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `-b BASE_BRANCH`, `-c` commit dirty tree, `-n` no-push, `-F` force, `merge OTHER_BRANCH` merge mode.
+- [x] 001.2 Specify the CLI contract and compatibility with the current script: list related branches, `branch create <twig> [--from <ref>]`, `-c` commit dirty tree, `-n` no-push, `-F` force, `merge OTHER_BRANCH` merge mode.
 - [x] 001.3 Implement “related branches” discovery (branches ending in `/$twig`) and ahead/behind shortstat reporting.
 - [x] 001.4 Implement branch creation from local or remote bases (including setting upstream).
 - [x] 001.5 Implement merge flow: generate commit message with `Co-authored-by:` lines, run `git merge --no-commit --no-ff`, then launch mergetool/difftool.
@@ -65,7 +65,7 @@ Constraints:
 
 ### Modes
 - **Status / discovery mode (`mob-consensus status`)**: `git fetch`, then lists related branches and prints whether each is ahead/behind/synced relative to the current branch.
-- **Branch bootstrap (`-b BASE_BRANCH`)**: creates a new `<user>/<twig>` branch based on `BASE_BRANCH` (does not push; it prints a suggested `git push -u ...`).
+- **Branch bootstrap (`mob-consensus branch create <twig> [--from <ref>]`)**: creates a new `<user>/<twig>` branch based on the current branch (or `--from`) (does not push; it prints a suggested `git push -u ...`).
 - **Merge mode (`mob-consensus merge OTHER_BRANCH`)**: performs an explicit, manual merge of `OTHER_BRANCH` into the current branch, including conflict resolution and review, then commits and (optionally) pushes.
 
 ## How It Builds Multilateral Consensus
@@ -86,7 +86,7 @@ Constraints:
 
 ## Usage Flow (Typical Mob Session)
 1. Each collaborator creates their own branch for the same twig (from a shared base):
-   - Example: `mob-consensus -b feature-x` → creates `<user>/feature-x` and prints a suggested `git push -u ...`.
+   - Example: `mob-consensus branch create feature-x` → creates `<user>/feature-x` and prints a suggested `git push -u ...`.
 2. Collaborators work normally (edit/commit/push on their own `<user>/<twig>` branches).
 3. Periodically, anyone runs `mob-consensus status` to see which sibling branches are ahead/behind/diverged.
 4. When it’s time to converge, pick a sibling branch and merge it into the current branch:

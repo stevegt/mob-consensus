@@ -1,9 +1,8 @@
 # TODO 015 - Cleaner interfaces for CLI, TUI, and Go API
 
-Context: `mob-consensus` currently has a mixed interface:
-- explicit subcommands: `init`, `start`, `join`, `status`, `merge` (TODO 006, TODO 015)
-- “legacy” implicit modes (to be removed):
-  - `mob-consensus -b <base>` ⇒ create `<user>/<twig>`
+Context: `mob-consensus` is moving to an explicit, conventional CLI:
+- explicit subcommands: `init`, `start`, `join`, `status`, `merge`, `branch create` (TODO 006, TODO 015)
+- hard breaks (intended): no “no-args discovery”, no positional merge, no `-b` branch-create flag.
 
 As we add multi-remote support (TODO 008), claiming (TODO 009), richer
 review/approval UX (TODO 011/012), and a possible TUI (TODO 014), the
@@ -128,7 +127,7 @@ If command names/args change:
 - [ ] 015.3 Pick a compatibility strategy (hard break vs soft migrate) and document it in `usage.tmpl`.
 - [x] 015.8 Hard break step 1: require explicit `mob-consensus status` (no “no-args discovery”).
 - [x] 015.9 Hard break step 2: require explicit `mob-consensus merge <ref>` (no positional merge).
-- [ ] 015.10 Hard break step 3: replace `-b` with `mob-consensus branch create <twig> [--from <ref>]`.
+- [x] 015.10 Hard break step 3: replace `-b` with `mob-consensus branch create <twig> [--from <ref>]`.
 - [ ] 015.4 Introduce Cobra scaffolding and map commands to existing logic.
 - [ ] 015.5 Define the engine package boundary (types + interfaces) and move non-interactive logic out of `main`.
 - [ ] 015.6 Add TUI entrypoint hooks that call the same engine (coordinate with TODO 014).

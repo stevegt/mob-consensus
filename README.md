@@ -16,7 +16,7 @@ Minimum supported Go is 1.24.0.
 ```
 mob-consensus status [-cF]
 mob-consensus merge  [-cFn] OTHER_BRANCH
-mob-consensus [-cF] -b BASE_BRANCH
+mob-consensus branch create [-cn] TWIG [--from REF]
 mob-consensus init  [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
 mob-consensus start [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
 mob-consensus join  [-c] [--twig NAME]            [--remote NAME] [--plan|--dry-run] [--yes]
@@ -24,7 +24,7 @@ mob-consensus join  [-c] [--twig NAME]            [--remote NAME] [--plan|--dry-
 
 - `status`: `git fetch`, then list related branches ending in `/<twig>` and show whether each is ahead/behind/diverged/synced.
 - `merge OTHER_BRANCH`: perform a manual merge of `OTHER_BRANCH` onto the current branch, populate `MERGE_MSG` with `Co-authored-by:` lines, open mergetool/difftool, then commit and (optionally) push.
-- `-b BASE_BRANCH`: create `<user>/<twig>` from `BASE_BRANCH` and switch to it (does not push; it prints a suggested `git push -u ...`).
+- `branch create TWIG [--from REF]`: create `<user>/<twig>` and switch to it. By default it branches from the current local branch (does not push; it prints a suggested `git push -u ...`).
 - `start`: first group member onboarding (create + push shared twig, then create + push your `<user>/<twig>`).
 - `join`: next group member onboarding (fetch, create local twig from `<remote>/<twig>`, then create + push your `<user>/<twig>`).
 - `init`: fetch and suggest `start` vs `join`, then (optionally) run it.

@@ -1,7 +1,7 @@
 Usage:
   mob-consensus status [-cF]
   mob-consensus merge  [-cFn] OTHER_BRANCH
-  mob-consensus [-cF] -b BASE_BRANCH
+  mob-consensus branch create [-cn] TWIG [--from REF]
   mob-consensus init  [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
   mob-consensus start [-c] [--twig NAME] [--base REF] [--remote NAME] [--plan|--dry-run] [--yes]
   mob-consensus join  [-c] [--twig NAME]            [--remote NAME] [--plan|--dry-run] [--yes]
@@ -55,8 +55,8 @@ Getting started (first group member):
   2) Push the shared twig branch (required so others can start from it):
        git push -u {{.Remote}} {{.ExampleTwig}}
   3) Create your personal branch from the local twig (creates {{.UserBranch}}):
-       mob-consensus -b {{.ExampleTwig}}
-       # (-b takes the shared twig name; it creates and switches to {{.UserBranch}}.)
+       mob-consensus branch create {{.ExampleTwig}}
+       # (This takes the shared twig name; it creates and switches to {{.UserBranch}}.)
   4) Push your personal branch:
        git push -u {{.Remote}} {{.UserBranch}}
 
@@ -70,8 +70,8 @@ Getting started (next group members):
        git fetch {{.Remote}}
        git switch -c {{.ExampleTwig}} {{.Remote}}/{{.ExampleTwig}}
   2) Create your personal branch (creates {{.UserBranch}}):
-       mob-consensus -b {{.ExampleTwig}}
-       # (-b takes the shared twig name; it creates and switches to {{.UserBranch}}.)
+       mob-consensus branch create {{.ExampleTwig}}
+       # (This takes the shared twig name; it creates and switches to {{.UserBranch}}.)
   3) Push your personal branch:
        git push -u {{.Remote}} {{.UserBranch}}
   4) Use mob-consensus to converge:
@@ -85,7 +85,7 @@ Commands:
   join           Next member flow: fetch, create local twig from {{.Remote}}/{{.ExampleTwig}}, create/push your {{.User}}/ branch.
   status         Fetch, then list related branches ending in */<twig> (example: */{{.ExampleTwig}}).
   merge OTHER_BRANCH  Merge OTHER_BRANCH onto current branch, add Co-authored-by trailers, open tools, commit, push.
-  -b BASE       Create {{.UserBranch}} from BASE and switch to it (does not push).
+  branch create TWIG  Create {{.User}}/TWIG from a base ref and switch to it (does not push).
 
 Notes:
   - For status/merge, you must be on a {{.User}}/ branch (use -F to override).
@@ -95,11 +95,11 @@ Notes:
 Flags:
   --twig NAME     shared twig branch name (e.g., {{.ExampleTwig}})
   --base REF      base ref for `start` (default: current branch)
+  --from REF      base ref for `branch create` (default: current branch)
   --remote NAME   remote for fetch/push (required when multiple remotes exist)
   --plan          print the command plan (commands + explanations) and exit
   --dry-run       print commands only; no prompts or execution
   --yes           accept defaults and run non-interactively
   -F force run even if not on a <user>/ branch
-  -b create new branch named <user>/<twig> based on BASE_BRANCH
   -n no automatic push after commit
   -c commit existing uncommitted changes

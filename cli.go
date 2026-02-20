@@ -55,7 +55,6 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		force       bool
 		noPush      bool
 		commitDirty bool
-		baseBranch  string
 	)
 
 	cmd := &cobra.Command{
@@ -64,31 +63,8 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		Args:          cobra.NoArgs,
-		// Root command supports the legacy `-b` branch creation flow until TODO 015
-		// step 3 (branch create subcommand) is implemented.
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := options{
-				force:       force,
-				noPush:      noPush,
-				commitDirty: commitDirty,
-				baseBranch:  baseBranch,
-			}
-
-			// Hard break: `mob-consensus` with no args no longer does discovery or a
-			// merge. Use explicit subcommands (ex: `status`, `merge`).
-			if opts.baseBranch == "" {
-				return usageError{Err: errors.New("mob-consensus: missing command (hint: run `mob-consensus -h`)")}
-			}
-
-			user, err := branchUserFromEmail(cmd.Context())
-			if err != nil {
-				return err
-			}
-
-			// `-b` implicitly allows running from any branch (it creates/switches to
-			// a personal branch). Keep the legacy behavior.
-			opts.force = true
-			return runCreateBranch(cmd.Context(), opts, user, cmd.OutOrStdout())
+			return usageError{Err: errors.New("mob-consensus: missing command (hint: run `mob-consensus -h`)")}
 		},
 	}
 	cmd.SetOut(stdout)
@@ -109,9 +85,9 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&force, "force", "F", false, "force run even if not on a <user>/ branch")
 	cmd.PersistentFlags().BoolVarP(&commitDirty, "commit-dirty", "c", false, "commit existing uncommitted changes")
 	cmd.PersistentFlags().BoolVarP(&noPush, "no-push", "n", false, "no automatic push after commits")
-	cmd.Flags().StringVarP(&baseBranch, "base-branch", "b", "", "create new <user>/<twig> branch based on base branch")
 
 	cmd.AddCommand(newStatusCmd(&force, &noPush, &commitDirty))
+	cmd.AddCommand(newBranchCmd(&noPush, &commitDirty))
 	cmd.AddCommand(newMergeCmd(&force, &noPush, &commitDirty))
 	cmd.AddCommand(newInitCmd(&commitDirty))
 	cmd.AddCommand(newStartCmd(&commitDirty))
@@ -192,6 +168,61 @@ func newMergeCmd(force, noPush, commitDirty *bool) *cobra.Command {
 			return runMerge(cmd.Context(), opts, currentBranch, cmd.OutOrStdout())
 		},
 	}
+	return cmd
+}
+
+func newBranchCmd(noPush, commitDirty *bool) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "branch",
+		Short: "Branch helpers",
+		Args:  cobra.NoArgs,
+	}
+	cmd.AddCommand(newBranchCreateCmd(noPush, commitDirty))
+	return cmd
+}
+
+func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
+	var fromRef string
+	cmd := &cobra.Command{
+		Use:   "create TWIG",
+		Short: "Create/switch to your personal <user>/<twig> branch",
+		Long: "Create (or switch to) your personal <user>/<twig> branch for the given TWIG.\n\n" +
+			"By default, the branch is created from the current local branch. Use --from to create it from an explicit ref.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			twig := args[0]
+			if err := validateBranchName(cmd.Context(), "twig", twig); err != nil {
+				return usageError{Err: err}
+			}
+
+			currentBranch, err := gitOutputTrimmed(cmd.Context(), "rev-parse", "--abbrev-ref", "HEAD")
+			if err != nil {
+				return err
+			}
+
+			baseRef := strings.TrimSpace(fromRef)
+			if baseRef == "" {
+				baseRef = currentBranch
+			}
+			if baseRef == "" || baseRef == "HEAD" {
+				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
+			}
+
+			user, err := branchUserFromEmail(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			opts := options{
+				noPush:      *noPush,
+				commitDirty: *commitDirty,
+				twig:        twig,
+				base:        baseRef,
+			}
+			return runCreateBranch(cmd.Context(), opts, user, cmd.OutOrStdout())
+		},
+	}
+	cmd.Flags().StringVar(&fromRef, "from", "", "base ref (default: current branch)")
 	return cmd
 }
 

@@ -26,7 +26,7 @@ Scenarios:
   join       Other users join from the shared twig and push their personal branches.
   discovery  Create commits and assert ahead/behind/diverged output.
   merge      Run a clean merge and then a no-op merge (with confirmation).
-  branch     Exercise `-b` idempotency and push advice.
+  branch     Exercise `branch create` idempotency and push advice.
   dirty      Exercise dirty-tree failures and `-c` auto-commit flow.
   smartpush  Exercise upstreamless push behavior (single vs multiple remotes).
   multiremote-fetch  Exercise fetch selection and ambiguity errors.
@@ -425,7 +425,7 @@ scenario_bootstrap() {
   echo "$prog: bootstrap ($leader)" >&2
   run git -C "$leader_repo" switch -c "$twig" "$base"
   run git -C "$leader_repo" push -u origin "$twig"
-  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig"
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig"
   assert_branch "$leader_repo" "$leader/$twig"
   run git -C "$leader_repo" push -u origin "$leader/$twig"
 }
@@ -444,7 +444,7 @@ scenario_join() {
     local repo="$root/$u"
     run git -C "$repo" fetch origin
     run git -C "$repo" switch -c "$twig" "origin/$twig"
-    run mc_run "$repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig"
+    run mc_run "$repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig"
     assert_branch "$repo" "$u/$twig"
     run git -C "$repo" push -u origin "$u/$twig"
   done
@@ -512,13 +512,13 @@ scenario_merge() {
   echo "$prog: merge (clean + no-op)" >&2
 
   run git -C "$root/$leader" switch "$leader/$twig"
-  run mc_run_confirm "$root/$leader" "$mc_bin" "$editor" "$noninteractive" "$other/$twig"
+  run mc_run_confirm "$root/$leader" "$mc_bin" "$editor" "$noninteractive" merge "$other/$twig"
 
   local msg
   msg="$(git -C "$root/$leader" log -1 --pretty=%B)"
   assert_contains "$msg" "Co-authored-by: $other <$other@example.com>"
 
-  run mc_run_confirm "$root/$leader" "$mc_bin" "$editor" "$noninteractive" "$other/$twig"
+  run mc_run_confirm "$root/$leader" "$mc_bin" "$editor" "$noninteractive" merge "$other/$twig"
 }
 
 scenario_branch() {
@@ -528,22 +528,22 @@ scenario_branch() {
   leader="$(awk '{print $1}' <<<"$users")"
   local leader_repo="$root/$leader"
 
-  echo "$prog: branch (-b idempotent + push advice)" >&2
+  echo "$prog: branch (branch create idempotent + push advice)" >&2
 
   run git -C "$leader_repo" switch "$twig"
   local out
-  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig" 2>&1)"
   assert_branch "$leader_repo" "$leader/$twig"
   assert_contains "$out" "git push -u origin $leader/$twig"
 
-  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig" 2>&1)"
   assert_branch "$leader_repo" "$leader/$twig"
 
   # Force ambiguous push advice: 2 remotes + no upstream.
   run_maybe git -C "$leader_repo" remote remove jj
   run git -C "$leader_repo" remote add jj "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
-  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" -b "$twig" 2>&1)"
+  out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig" 2>&1)"
   assert_contains "$out" "git push -u <remote> $leader/$twig"
   assert_contains "$out" "Available remotes:"
 

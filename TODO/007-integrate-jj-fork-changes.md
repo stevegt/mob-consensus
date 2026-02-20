@@ -31,7 +31,7 @@ Key design choice differences to preserve from `main`:
 
 ## JJ changes worth porting (adapted to `main` constraints)
 
-- Branch creation idempotency: re-running `mob-consensus -b <twig>`
+- Branch creation idempotency: re-running `mob-consensus branch create <twig>`
   should switch to existing `<user>/<twig>` instead of failing.
 - Output plumbing: `ensureClean` should write to the provided writer,
   not directly to `os.Stdout`.

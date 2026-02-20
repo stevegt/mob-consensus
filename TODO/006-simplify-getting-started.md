@@ -56,7 +56,7 @@ Recommended sequencing if doing it now:
 - [x] 006.3 First member (“start”) automation.
   - [x] 006.3.1 Create shared twig branch from base (`git switch -c <twig> <base>`).
   - [x] 006.3.2 Push shared twig branch (required; others can’t join until this is pushed) (`git push -u <remote> <twig>`).
-  - [x] 006.3.3 Create personal branch from the local twig (`mob-consensus -b <twig>` or internal equivalent).
+  - [x] 006.3.3 Create personal branch from the local twig (`mob-consensus branch create <twig>` or internal equivalent).
   - [x] 006.3.4 Push personal branch (`git push -u <remote> <user>/<twig>`).
 - [x] 006.4 Next members (“join”) automation.
   - [x] 006.4.1 Fetch (`git fetch <remote>`).

@@ -14,9 +14,9 @@ and produce a repeatable coverage report.
 ## What we must cover
 
 - Branch creation:
-  - `mob-consensus -b <twig>` creates `<user>/<twig>` from local
-    `<twig>`.
-  - Re-running `-b` is idempotent (switches to existing
+  - `mob-consensus branch create <twig>` creates `<user>/<twig>` from
+    the current local branch (typically the local `<twig>` branch).
+  - Re-running `branch create` is idempotent (switches to existing
     `<user>/<twig>`).
 - Discovery:
   - Shows `ahead`, `behind`, `has diverged`, and `synced` correctly.
@@ -28,7 +28,7 @@ and produce a repeatable coverage report.
   - Shorthand `bob/<twig>` resolves to exactly-one
     `<remote>/bob/<twig>` across remotes and asks for confirmation.
 - Dirty-tree behavior:
-  - `-b` / merge require clean trees unless `-c` is provided.
+  - `branch create` / merge require clean trees unless `-c` is provided.
   - `-c` commits dirty work (and pushes unless `-n`).
 - Remote ambiguity:
   - Fetch errors are fatal.
@@ -44,7 +44,7 @@ and produce a repeatable coverage report.
 
 - [ ] 010.1 Add scenario coverage matrix in `scripts/mc-test --help` (brief list of scenarios and what they assert).
 - [x] 010.2 Add scenario `branch`:
-  - [x] 010.2.1 Run `mob-consensus -b <twig>` twice; assert branch unchanged and no error.
+  - [x] 010.2.1 Run `mob-consensus branch create <twig>` twice; assert branch unchanged and no error.
   - [x] 010.2.2 Verify push advice contains the selected remote or a placeholder when ambiguous.
 - [x] 010.3 Add scenario `dirty`:
   - [x] 010.3.1 Make an uncommitted tracked change; run `mob-consensus merge OTHER_BRANCH`; assert non-zero + “dirty” message.
@@ -100,7 +100,7 @@ Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
 
 - [ ] 010.11 Add Go tests that exercise real CLI paths via `run()` in a temp git repo:
   - [x] 010.11.1 `-h/--help` renders usage without error (in a temp repo with/without remotes).
-  - [x] 010.11.2 `-b <base>` creates `<user>/<twig>` from local `<twig>` (create `twig` first) and prints push advice.
+  - [x] 010.11.2 `branch create <twig>` creates `<user>/<twig>` from local `<twig>` (create `twig` first) and prints push advice.
   - [x] 010.11.3 Discovery mode prints the expected status lines (ahead/behind/diverged/synced) for arranged histories.
   - [x] 010.11.4 Merge mode: clean merge creates a merge commit with `Co-authored-by:` trailers; repeat merge is a no-op success.
   - [ ] 010.11.5 Error paths produce human-readable errors:

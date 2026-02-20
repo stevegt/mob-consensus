@@ -497,16 +497,16 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	withCwd(t, repo)
 
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"-b", "feature-x"}, &out, io.Discard); err != nil {
-		t.Fatalf("run(-b) err=%v\n%s", err, out.String())
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(branch create) err=%v\n%s", err, out.String())
 	}
 	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
 		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
 	}
 
 	out.Reset()
-	if err := run(context.Background(), []string{"-b", "feature-x"}, &out, io.Discard); err != nil {
-		t.Fatalf("run(-b) second time err=%v\n%s", err, out.String())
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(branch create) second time err=%v\n%s", err, out.String())
 	}
 	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
 		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
@@ -1104,7 +1104,7 @@ func TestRunCreateBranchDirtyFails(t *testing.T) {
 	withCwd(t, repo)
 
 	var out bytes.Buffer
-	err := run(context.Background(), []string{"-b", "feature-x"}, &out, io.Discard)
+	err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard)
 	if err == nil {
 		t.Fatalf("expected error on dirty tree")
 	}
@@ -1536,8 +1536,8 @@ func TestRunMergeBranchNotFoundShowsDiscovery(t *testing.T) {
 	gitCmd(t, alice, "fetch", "origin")
 	gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 	withCwd(t, alice)
-	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
-		t.Fatalf("run(-b) err=%v", err)
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(branch create) err=%v", err)
 	}
 
 	headBefore := strings.TrimSpace(gitCmd(t, alice, "rev-parse", "HEAD"))
@@ -1600,8 +1600,8 @@ func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 		gitCmd(t, alice, "fetch", "origin")
 		gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 		withCwd(t, alice)
-		if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
-			t.Fatalf("run(-b) err=%v", err)
+		if err := run(context.Background(), []string{"branch", "create", "feature-x"}, io.Discard, io.Discard); err != nil {
+			t.Fatalf("run(branch create) err=%v", err)
 		}
 		withStdin(t, "n\n")
 
@@ -1618,8 +1618,8 @@ func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 		gitCmd(t, alice, "fetch", "origin")
 		gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 		withCwd(t, alice)
-		if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
-			t.Fatalf("run(-b) err=%v", err)
+		if err := run(context.Background(), []string{"branch", "create", "feature-x"}, io.Discard, io.Discard); err != nil {
+			t.Fatalf("run(branch create) err=%v", err)
 		}
 		withStdin(t, "y\n")
 
@@ -1692,8 +1692,8 @@ func TestRunDiscoveryViaRun(t *testing.T) {
 	gitSwitchCreate(t, alice, "feature-x")
 	gitCmd(t, alice, "push", "-u", "origin", "feature-x")
 	withCwd(t, alice)
-	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
-		t.Fatalf("run(-b) err=%v", err)
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(branch create) err=%v", err)
 	}
 	gitCmd(t, alice, "push", "-u", "origin", "alice/feature-x")
 
@@ -1728,8 +1728,8 @@ func TestRunMergeViaRun(t *testing.T) {
 	gitCmd(t, alice, "fetch", "origin")
 	gitSwitchCreate(t, alice, "feature-x", "origin/feature-x")
 	withCwd(t, alice)
-	if err := run(context.Background(), []string{"-b", "feature-x"}, io.Discard, io.Discard); err != nil {
-		t.Fatalf("run(-b) err=%v", err)
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, io.Discard, io.Discard); err != nil {
+		t.Fatalf("run(branch create) err=%v", err)
 	}
 	gitCmd(t, alice, "push", "-u", "origin", "alice/feature-x")
 	withStdin(t, "y\n")

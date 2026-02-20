@@ -30,7 +30,6 @@ const (
 
 type options struct {
 	force       bool
-	baseBranch  string
 	noPush      bool
 	commitDirty bool
 	otherBranch string
@@ -882,13 +881,27 @@ func runJoin(ctx context.Context, opts options, user, currentBranch string, stdo
 }
 
 func runCreateBranch(ctx context.Context, opts options, user string, stdout io.Writer) error {
-	if err := ensureClean(ctx, opts, true, stdout); err != nil {
+	twig := strings.TrimSpace(opts.twig)
+	if twig == "" {
+		return errors.New("mob-consensus: twig is empty")
+	}
+	if err := validateBranchName(ctx, "twig", twig); err != nil {
 		return err
 	}
 
-	twig := twigFromBranch(opts.baseBranch)
+	baseRef := strings.TrimSpace(opts.base)
+	if baseRef == "" {
+		return errors.New("mob-consensus: base ref is empty")
+	}
+
 	newBranch := user + "/" + twig
-	baseBranch := opts.baseBranch
+	if err := validateBranchName(ctx, "personal branch", newBranch); err != nil {
+		return err
+	}
+
+	if err := ensureClean(ctx, opts, true, stdout); err != nil {
+		return err
+	}
 
 	existingBranches, err := gitOutput(ctx, "branch", "--list", newBranch)
 	if err != nil {
@@ -903,7 +916,7 @@ func runCreateBranch(ctx context.Context, opts options, user string, stdout io.W
 		return printPushAdvice(ctx, stdout, newBranch)
 	}
 
-	if err := gitRun(ctx, "checkout", "-b", newBranch, baseBranch); err != nil {
+	if err := gitRun(ctx, "checkout", "-b", newBranch, baseRef); err != nil {
 		return err
 	}
 	fmt.Fprintln(stdout)

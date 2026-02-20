@@ -1,0 +1,18 @@
+{
+  "name": "mob-consensus (Go)",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/go:1": {
+      "version": "1.24.0"
+    }
+  },
+  "postCreateCommand": "go mod download",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go"
+      ]
+    }
+  }
+}

@@ -48,14 +48,14 @@ The scenario runner performs these checks:
 - `join`: other users create/push `user/<twig>` branches based on the shared twig.
 - `discovery`: creates commits and asserts the discovery output includes “ahead”, “behind”, and “has diverged”.
 - `merge`: merges `other/<twig>` onto `leader/<twig>` using shorthand resolution + confirmation; asserts the merge commit contains a `Co-authored-by:` for the other user; then reruns the same merge to ensure a no-op merge succeeds.
-- `branch`: exercises `mob-consensus -b` idempotency and push advice (single-remote vs multi-remote + no upstream).
+- `branch`: exercises `mob-consensus branch create` idempotency and push advice (single-remote vs multi-remote + no upstream).
 - `dirty`: exercises dirty-tree failures and `-c` auto-commit behavior.
 - `smartpush`: exercises upstreamless push behavior with 1 remote vs multiple remotes.
 - `multiremote-fetch`: exercises fetch selection and ambiguity errors when multiple remotes exist.
 - `converge`: has all users make real file commits and then merge until discovery reports peers are `synced` (no diffs).
 
 ## Success criteria
-- No remote name is assumed by `mob-consensus -b`.
+- No remote name is assumed by `mob-consensus branch create`.
 - “Already up to date” merges are treated as success.
 - Discovery clearly distinguishes ahead/behind/diverged/synced.
 

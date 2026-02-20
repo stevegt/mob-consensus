@@ -8,7 +8,7 @@ Constraints:
 
 - [ ] 003.1 Add a build-tagged system test suite (so `go test ./...` stays fast).
 - [ ] 003.2 Implement a helper harness in tests (create bare remote, seed, clone users, run commands).
-- [ ] 003.3 Cover `-b` branch creation and push advice.
+- [ ] 003.3 Cover `branch create` and push advice.
 - [ ] 003.4 Cover discovery mode output (ahead/behind/diverged/synced).
 - [ ] 003.5 Cover merge mode for clean/no-op merges (non-interactive).
 - [ ] 003.6 Add one “conflict merge fails cleanly” test (expected non-zero exit).
@@ -42,12 +42,12 @@ This avoids prompts, avoids requiring `vimdiff` to be installed, and makes `git 
 
 1) **Branch creation (no push required)**
 - Arrange: in `alice/`, create `feature-x` from `main`.
-- Act: run `mob-consensus -b feature-x`.
+- Act: run `mob-consensus branch create feature-x`.
 - Assert: current branch is `alice/feature-x`; stdout contains a `git push -u` suggestion.
 
 2) **Discovery statuses**
 - Arrange: make/push commits such that `bob/feature-x` is ahead; then create diverged histories.
-- Act: run `mob-consensus`.
+- Act: run `mob-consensus status`.
 - Assert: output contains “is ahead”, “is behind”, and “has diverged” in the expected scenarios.
 
 3) **Merge no-op is success**
@@ -57,7 +57,7 @@ This avoids prompts, avoids requiring `vimdiff` to be installed, and makes `git 
 
 4) **Merge clean creates a merge commit**
 - Arrange: `bob/feature-x` has a commit that cleanly merges.
-- Act: run merge from `alice/feature-x`.
+- Act: run `mob-consensus merge origin/bob/feature-x` from `alice/feature-x`.
 - Assert: `git log -1` is a merge commit and includes at least one `Co-authored-by:` line for Bob.
 
 5) **Conflict merge exits non-zero**
