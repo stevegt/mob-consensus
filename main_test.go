@@ -1,5 +1,10 @@
 package main
 
+// Unit tests for small, mostly pure helpers.
+//
+// Integration tests that exercise real git workflows live in
+// main_integration_test.go.
+
 import (
 	"errors"
 	"fmt"
@@ -8,10 +13,15 @@ import (
 	"testing"
 )
 
+// errReader is an io.Reader that always errors. It's used to exercise error
+// handling paths in prompt helpers.
 type errReader struct{}
 
+// Read always returns an error.
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
 
+// TestTwigFromBranch verifies that twig extraction is stable for both local and
+// remote-tracking branch name formats.
 func TestTwigFromBranch(t *testing.T) {
 	t.Parallel()
 
@@ -32,6 +42,8 @@ func TestTwigFromBranch(t *testing.T) {
 	}
 }
 
+// TestRelatedBranches verifies that `relatedBranches` filters branches ending
+// in "/<twig>" and ignores symbolic-ref and current-branch markers.
 func TestRelatedBranches(t *testing.T) {
 	t.Parallel()
 
@@ -55,6 +67,8 @@ func TestRelatedBranches(t *testing.T) {
 	}
 }
 
+// TestCoAuthorLines verifies stable sorting/deduping and "exclude self" logic
+// for Co-authored-by trailers.
 func TestCoAuthorLines(t *testing.T) {
 	t.Parallel()
 
@@ -76,6 +90,8 @@ func TestCoAuthorLines(t *testing.T) {
 	}
 }
 
+// TestDiffStatusLine checks the formatting logic for ahead/behind/diverged
+// status lines.
 func TestDiffStatusLine(t *testing.T) {
 	t.Parallel()
 
@@ -114,6 +130,8 @@ func TestDiffStatusLine(t *testing.T) {
 	}
 }
 
+// TestValidateOnboardingFlags ensures mutually-exclusive onboarding flags are
+// rejected as usage errors.
 func TestValidateOnboardingFlags(t *testing.T) {
 	t.Parallel()
 
@@ -123,6 +141,7 @@ func TestValidateOnboardingFlags(t *testing.T) {
 	}
 }
 
+// TestConfirm exercises yes/no prompt parsing, including EOF without newline.
 func TestConfirm(t *testing.T) {
 	t.Parallel()
 
@@ -152,6 +171,7 @@ func TestConfirm(t *testing.T) {
 	}
 }
 
+// TestUsageErrorUnwrap verifies usageError supports errors.Is/errors.Unwrap.
 func TestUsageErrorUnwrap(t *testing.T) {
 	t.Parallel()
 
@@ -166,6 +186,7 @@ func TestUsageErrorUnwrap(t *testing.T) {
 	}
 }
 
+// TestPrintErrorNil ensures printError is a no-op for nil errors.
 func TestPrintErrorNil(t *testing.T) {
 	t.Parallel()
 
@@ -176,6 +197,7 @@ func TestPrintErrorNil(t *testing.T) {
 	}
 }
 
+// TestRequireUserBranch verifies the "<user>/" branch convention enforcement.
 func TestRequireUserBranch(t *testing.T) {
 	t.Parallel()
 
@@ -190,6 +212,7 @@ func TestRequireUserBranch(t *testing.T) {
 	}
 }
 
+// TestPromptStringError ensures promptString propagates reader errors.
 func TestPromptStringError(t *testing.T) {
 	t.Parallel()
 

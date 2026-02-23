@@ -10,10 +10,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// This file defines the CLI surface area using Cobra. The goal is to keep
-// parsing and command routing here, while the Git-centric logic lives in
-// main.go so it can be exercised by integration tests.
+// This file defines the CLI surface area using Cobra.
+//
+// The design goal is to keep parsing, command routing, and help/usage wiring
+// here, while leaving the Git-centric workflow logic in main.go so it can be
+// exercised by integration tests (without spawning a separate binary).
+//
+// TODO 015 hard breaks are implemented as explicit verbs:
+//   - `mob-consensus status` (no "no-args discovery")
+//   - `mob-consensus merge <ref>` (no positional merge)
+//   - `mob-consensus branch create <twig>` (no `-b` flag)
 
+// run is the main CLI entrypoint used by mainExit. It executes the Cobra root
+// command with the provided args and I/O streams.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	root := newRootCmd(stdout, stderr)
 	root.SetArgs(args)
@@ -33,6 +42,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	return nil
 }
 
+// isCobraUsageError returns true for errors that should be treated as "show
+// usage" errors.
+//
+// Cobra returns plain errors for unknown commands/flags/args. We convert those
+// into usageError so mainExit prints help instead of only an error line.
 func isCobraUsageError(err error) bool {
 	if err == nil {
 		return false
@@ -50,6 +64,11 @@ func isCobraUsageError(err error) bool {
 		strings.Contains(msg, "invalid argument")
 }
 
+// newRootCmd constructs the root Cobra command, wires global flags, and
+// attaches subcommands.
+//
+// Help/usage rendering is delegated to printUsage() so the user-facing text is
+// maintained as a single template (usage.tmpl).
 func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	var (
 		force       bool
@@ -96,6 +115,7 @@ func newRootCmd(stdout, stderr io.Writer) *cobra.Command {
 	return cmd
 }
 
+// newStatusCmd implements `mob-consensus status`.
 func newStatusCmd(force, noPush, commitDirty *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -135,6 +155,7 @@ func newStatusCmd(force, noPush, commitDirty *bool) *cobra.Command {
 	return cmd
 }
 
+// newMergeCmd implements `mob-consensus merge OTHER_BRANCH`.
 func newMergeCmd(force, noPush, commitDirty *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "merge OTHER_BRANCH",
@@ -171,6 +192,7 @@ func newMergeCmd(force, noPush, commitDirty *bool) *cobra.Command {
 	return cmd
 }
 
+// newBranchCmd groups branch-related helpers under `mob-consensus branch ...`.
 func newBranchCmd(noPush, commitDirty *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "branch",
@@ -181,6 +203,12 @@ func newBranchCmd(noPush, commitDirty *bool) *cobra.Command {
 	return cmd
 }
 
+// newBranchCreateCmd implements `mob-consensus branch create TWIG`.
+//
+// The created personal branch name is derived from `git config user.email`.
+// The base ref is either:
+//   - the explicit --from ref (which may be "HEAD"), or
+//   - the current branch name (when not detached).
 func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
 	var fromRef string
 	cmd := &cobra.Command{
@@ -201,10 +229,19 @@ func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
 			}
 
 			baseRef := strings.TrimSpace(fromRef)
-			if baseRef == "" {
+			derivedBase := baseRef == ""
+			if derivedBase {
 				baseRef = currentBranch
 			}
-			if baseRef == "" || baseRef == "HEAD" {
+			if baseRef == "" {
+				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
+			}
+			// If the repo is in detached HEAD and the user did not explicitly provide
+			// a base, require an explicit `--from` to avoid branching from an
+			// unexpected commit. If the user *did* pass `--from HEAD`, allow it:
+			// `git checkout -b <branch> HEAD` is a valid way to branch from the
+			// current commit even in detached HEAD.
+			if derivedBase && baseRef == "HEAD" {
 				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
 			}
 
@@ -235,6 +272,7 @@ type onboardingFlags struct {
 	yes    bool
 }
 
+// addOnboardingFlags adds the shared init/start/join flags to cmd.
 func addOnboardingFlags(cmd *cobra.Command, flags *onboardingFlags, includeBase bool) {
 	cmd.Flags().StringVar(&flags.twig, "twig", "", "shared twig branch name")
 	if includeBase {
@@ -246,6 +284,7 @@ func addOnboardingFlags(cmd *cobra.Command, flags *onboardingFlags, includeBase 
 	cmd.Flags().BoolVar(&flags.yes, "yes", false, "accept defaults and run non-interactively")
 }
 
+// validateOnboardingFlags checks for flag combinations that don't make sense.
 func validateOnboardingFlags(flags onboardingFlags) error {
 	if flags.plan && flags.dryRun {
 		return usageError{Err: errors.New("--plan and --dry-run are mutually exclusive")}
@@ -253,6 +292,7 @@ func validateOnboardingFlags(flags onboardingFlags) error {
 	return nil
 }
 
+// newInitCmd implements `mob-consensus init`.
 func newInitCmd(commitDirty *bool) *cobra.Command {
 	var flags onboardingFlags
 	cmd := &cobra.Command{
@@ -289,6 +329,7 @@ func newInitCmd(commitDirty *bool) *cobra.Command {
 	return cmd
 }
 
+// newStartCmd implements `mob-consensus start`.
 func newStartCmd(commitDirty *bool) *cobra.Command {
 	var flags onboardingFlags
 	cmd := &cobra.Command{
@@ -325,6 +366,7 @@ func newStartCmd(commitDirty *bool) *cobra.Command {
 	return cmd
 }
 
+// newJoinCmd implements `mob-consensus join`.
 func newJoinCmd(commitDirty *bool) *cobra.Command {
 	var flags onboardingFlags
 	cmd := &cobra.Command{

@@ -17,6 +17,7 @@ Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaultin
 ## Coding Style & Naming Conventions
 - Bash: keep changes small and readable; validate with `bash -n x/mob-consensus` (and `shellcheck x/mob-consensus` if available).
 - Go: run `gofmt`; keep package names short and lower-case. Minimum supported Go is 1.24.0 (see `go.mod`).
+- Always add detailed comments to code.
 
 ## Testing Guidelines
 - Prefer deterministic tests using Go’s standard `testing` package when adding Go code.

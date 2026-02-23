@@ -1,5 +1,13 @@
 package main
 
+// Integration tests for mob-consensus.
+//
+// These tests create real git repositories under t.TempDir() and drive the
+// CLI in-process via run()/helpers. They aim to mirror the Git commands shown
+// in `usage.tmpl` so the exercised workflows match what real users do.
+// When a test must deviate (compatibility, determinism, or to keep the test
+// focused), it should explain why in an inline comment.
+
 import (
 	"bytes"
 	"context"
@@ -12,18 +20,20 @@ import (
 	"testing"
 )
 
+// friendlyError is a test error type that exercises printError's Msg() path.
 type friendlyError struct{}
 
+// Error implements the error interface.
 func (friendlyError) Error() string { return "raw error" }
+
+// Msg returns the user-facing friendly message.
 func (friendlyError) Msg() string   { return "friendly message" }
 
+// exitCode is used to capture exit codes from main() by panicking from exitFunc.
 type exitCode int
 
-// These integration tests try to mirror the Git commands shown in `usage.tmpl`
-// so the exercised workflows match what real users do. When a test must deviate
-// (compatibility, determinism, or to keep the test focused), explain why in an
-// inline comment.
-
+// unsetEnv removes an environment variable for the duration of the test and
+// restores its prior value (if any) during cleanup.
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 	val, ok := os.LookupEnv(key)
@@ -39,6 +49,7 @@ func unsetEnv(t *testing.T, key string) {
 	})
 }
 
+// requireGit skips the test when `git` is not available on PATH.
 func requireGit(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -46,6 +57,11 @@ func requireGit(t *testing.T) {
 	}
 }
 
+// setupIsolatedGitEnv ensures git commands in tests don't pick up caller state.
+//
+// In particular, it clears env vars that can redirect git to another repo and
+// forces HOME/XDG_CONFIG_HOME into a temp dir so global config can't leak into
+// tests. It also disables prompting and paging.
 func setupIsolatedGitEnv(t *testing.T) {
 	t.Helper()
 	// Prevent user environment variables from pointing git at a non-temp repo.
@@ -75,6 +91,8 @@ func setupIsolatedGitEnv(t *testing.T) {
 	t.Setenv("GIT_EDITOR", "true")
 }
 
+// requireTempDir enforces that dir is under os.TempDir(). This protects against
+// tests accidentally writing to non-temporary paths if a helper is misused.
 func requireTempDir(t *testing.T, dir string) {
 	t.Helper()
 	absDir, err := filepath.Abs(dir)
@@ -93,6 +111,8 @@ func requireTempDir(t *testing.T, dir string) {
 	}
 }
 
+// gitCmd runs `git <args...>` in dir and returns the combined output.
+// It fails the test if git exits non-zero.
 func gitCmd(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	requireTempDir(t, dir)
@@ -105,6 +125,9 @@ func gitCmd(t *testing.T, dir string, args ...string) string {
 	return string(out)
 }
 
+// gitInitMain initializes an empty git repository whose initial branch is
+// named "main". It uses `git init -b main` when supported, otherwise falls back
+// to `git branch -M main` for older git versions.
 func gitInitMain(t *testing.T, dir string) {
 	t.Helper()
 	requireTempDir(t, dir)
@@ -129,6 +152,8 @@ func gitInitMain(t *testing.T, dir string) {
 	}
 }
 
+// writeFile writes contents to dir/relPath, creating parent directories as
+// needed.
 func writeFile(t *testing.T, dir, relPath, contents string) {
 	t.Helper()
 	requireTempDir(t, dir)
@@ -141,6 +166,9 @@ func writeFile(t *testing.T, dir, relPath, contents string) {
 	}
 }
 
+// withCwd changes the process working directory for the duration of the test.
+// This is required because mob-consensus shells out to git without setting
+// cmd.Dir; it relies on the current working directory to select the repo.
 func withCwd(t *testing.T, dir string) {
 	t.Helper()
 	requireTempDir(t, dir)
@@ -156,6 +184,8 @@ func withCwd(t *testing.T, dir string) {
 	})
 }
 
+// withStdin replaces os.Stdin for the duration of the test so confirmation
+// prompts can be exercised deterministically.
 func withStdin(t *testing.T, input string) {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -177,6 +207,8 @@ func withStdin(t *testing.T, input string) {
 	})
 }
 
+// configureRepo sets per-repo identity and disables interactive tooling so
+// merge/commit flows can run unattended in tests.
 func configureRepo(t *testing.T, dir, name, email string) {
 	t.Helper()
 	requireTempDir(t, dir)
@@ -189,6 +221,7 @@ func configureRepo(t *testing.T, dir, name, email string) {
 	gitCmd(t, dir, "config", "--local", "mergetool.vimdiff.cmd", "true")
 }
 
+// cloneRepo clones remote into a temp dir and configures repo-local identity.
 func cloneRepo(t *testing.T, remote, name, email string) string {
 	t.Helper()
 	requireGit(t)
@@ -205,13 +238,15 @@ func cloneRepo(t *testing.T, remote, name, email string) string {
 	return dir
 }
 
+// gitSwitchCreate creates a new branch in dir, optionally from startPoint.
+//
+// `usage.tmpl` recommends `git switch -c`. Use it when available, but fall back
+// to `git checkout -b` for older Git versions (<2.23) so the tests run on a
+// wider range of systems.
 func gitSwitchCreate(t *testing.T, dir, branch string, startPoint ...string) {
 	t.Helper()
 	requireTempDir(t, dir)
 
-	// `usage.tmpl` recommends `git switch -c`. Use it when available, but fall
-	// back to `git checkout -b` for older Git versions (<2.23) so the tests run
-	// on a wider range of systems.
 	args := []string{"switch", "-c", branch}
 	if len(startPoint) > 0 {
 		args = append(args, startPoint[0])

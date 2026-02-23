@@ -738,7 +738,7 @@ scenario_converge() {
   # Leader merges each other user branch onto the leader branch.
   run git -C "$leader_repo" switch "$leader/$twig"
   for u in "${others[@]}"; do
-    run mc_run_confirm "$leader_repo" "$mc_bin" "$editor" "$noninteractive" "$u/$twig"
+    run mc_run_confirm "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "$u/$twig"
     assert_file "$leader_repo/converge/$u.txt"
   done
 
@@ -746,7 +746,7 @@ scenario_converge() {
   for u in "${others[@]}"; do
     local repo="$root/$u"
     run git -C "$repo" switch "$u/$twig"
-    run mc_run_confirm "$repo" "$mc_bin" "$editor" "$noninteractive" "$leader/$twig"
+    run mc_run_confirm "$repo" "$mc_bin" "$editor" "$noninteractive" merge "$leader/$twig"
     for peer in $users; do
       assert_file "$repo/converge/$peer.txt"
     done
