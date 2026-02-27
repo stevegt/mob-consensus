@@ -1,5 +1,12 @@
 //go:build unix
 
+// expect-vt10x is an experiment that combines go-expect (pty + expect-style
+// interactions) with vt10x (a simple VT100-ish terminal emulator) so we can
+// both *drive* and *scrape* a TUI from Go.
+//
+// Run without args to act as the parent harness. The parent starts itself with
+// `--child`, wires the child to a pseudo-terminal, and then asserts sentinel
+// strings printed by the TUI while capturing the resulting screen state.
 package main
 
 import (
@@ -14,6 +21,8 @@ import (
 	"github.com/stevegt/mob-consensus/x/tui-test/tuidemo"
 )
 
+// main either runs the demo TUI (`--child`) or runs the parent expect/emulator
+// harness that drives the TUI and prints the final screen contents.
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--child" {
 		if err := tuidemo.Run(); err != nil {
@@ -59,6 +68,7 @@ func main() {
 	fmt.Printf("screen:\n%s\n", vt.String())
 }
 
+// must is a tiny helper for experiments: crash-fast on unexpected errors.
 func must(err error) {
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

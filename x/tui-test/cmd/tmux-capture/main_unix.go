@@ -1,5 +1,10 @@
 //go:build unix
 
+// tmux-capture is an experiment that uses tmux as a terminal multiplexer to
+// run a child TUI and scrape its rendered screen via `tmux capture-pane`.
+//
+// It uses a dedicated tmux server socket under a temp dir, so it should not
+// interfere with a user's existing tmux sessions.
 package main
 
 import (
@@ -13,6 +18,8 @@ import (
 	"github.com/stevegt/mob-consensus/x/tui-test/tuidemo"
 )
 
+// main either runs the demo TUI (`--child`) or starts a private tmux server,
+// runs the child, sends a quit key, then captures and prints the pane.
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--child" {
 		if err := tuidemo.Run(); err != nil {
@@ -56,6 +63,7 @@ func main() {
 	fmt.Printf("capture:\n%s\n", bytes.TrimRight(out, "\n"))
 }
 
+// must is a tiny helper for experiments: crash-fast on unexpected errors.
 func must(err error) {
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

@@ -1,5 +1,11 @@
 //go:build unix
 
+// pty-raw is a minimal experiment that uses github.com/creack/pty directly to
+// run a child process attached to a pseudo-terminal.
+//
+// It demonstrates the lowest-level approach: start a PTY, stream bytes, and
+// inject keystrokes. There is no expect-style matching and no terminal
+// emulation/screen scraping.
 package main
 
 import (
@@ -13,6 +19,8 @@ import (
 	"github.com/stevegt/mob-consensus/x/tui-test/tuidemo"
 )
 
+// main either runs the demo TUI (`--child`) or starts the child under a PTY and
+// injects a "q" keystroke after a short delay.
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--child" {
 		if err := tuidemo.Run(); err != nil {
@@ -44,6 +52,7 @@ func main() {
 	<-done
 }
 
+// must is a tiny helper for experiments: crash-fast on unexpected errors.
 func must(err error) {
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

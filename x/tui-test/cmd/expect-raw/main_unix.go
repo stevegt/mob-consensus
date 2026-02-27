@@ -1,5 +1,10 @@
 //go:build unix
 
+// expect-raw is a small experiment using go-expect alone to drive a raw-mode TUI
+// over a pseudo-terminal.
+//
+// Unlike the expect+vt10x experiment, this one does not attempt to emulate and
+// scrape the full screen; it only performs expect-style reads on the raw output.
 package main
 
 import (
@@ -12,6 +17,8 @@ import (
 	"github.com/stevegt/mob-consensus/x/tui-test/tuidemo"
 )
 
+// main either runs the demo TUI (`--child`) or runs the parent expect harness
+// that starts the child and asserts on its output.
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "--child" {
 		if err := tuidemo.Run(); err != nil {
@@ -45,6 +52,7 @@ func main() {
 	_ = cmd.Wait()
 }
 
+// must is a tiny helper for experiments: crash-fast on unexpected errors.
 func must(err error) {
 	if err != nil {
 		_, _ = fmt.Fprintln(os.Stderr, err)

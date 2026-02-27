@@ -27,7 +27,7 @@ type friendlyError struct{}
 func (friendlyError) Error() string { return "raw error" }
 
 // Msg returns the user-facing friendly message.
-func (friendlyError) Msg() string   { return "friendly message" }
+func (friendlyError) Msg() string { return "friendly message" }
 
 // exitCode is used to capture exit codes from main() by panicking from exitFunc.
 type exitCode int
@@ -273,6 +273,8 @@ func gitSwitchCreate(t *testing.T, dir, branch string, startPoint ...string) {
 	t.Fatalf("git %s failed: %v\n%s", strings.Join(args, " "), err, out)
 }
 
+// initRepo creates a new git repo under t.TempDir() with a single seed commit.
+// It returns the repo path.
 func initRepo(t *testing.T) string {
 	t.Helper()
 	requireGit(t)
@@ -288,6 +290,8 @@ func initRepo(t *testing.T) string {
 	return dir
 }
 
+// initBareRemote creates a bare git repo under t.TempDir() and sets its HEAD to
+// `refs/heads/main` so clones behave deterministically across git configs.
 func initBareRemote(t *testing.T) string {
 	t.Helper()
 	requireGit(t)
@@ -309,6 +313,9 @@ func initBareRemote(t *testing.T) string {
 	return dir
 }
 
+// writeCommitMessageEditor creates an executable shell script that behaves like
+// a non-interactive git editor by writing a fixed commit message to the file
+// path git passes as $1.
 func writeCommitMessageEditor(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -328,6 +335,8 @@ printf '%s\n' "test auto commit" >"$msg_file"
 	return editorPath
 }
 
+// TestRunHelpOutsideRepo ensures `mob-consensus -h` works even when the current
+// directory is not a git repo (this is the first thing many users try).
 func TestRunHelpOutsideRepo(t *testing.T) {
 	requireGit(t)
 	setupIsolatedGitEnv(t)
@@ -348,6 +357,8 @@ func TestRunHelpOutsideRepo(t *testing.T) {
 	}
 }
 
+// TestMainUsesExitFunc verifies main() routes exits through exitFunc so tests
+// can safely intercept and assert the exit code.
 func TestMainUsesExitFunc(t *testing.T) {
 	setupIsolatedGitEnv(t)
 	dir := t.TempDir()
@@ -402,6 +413,8 @@ func TestMainUsesExitFunc(t *testing.T) {
 	}
 }
 
+// TestBranchUserFromEmail verifies we derive the branch "user" prefix from the
+// left-hand side of user.email, and reject invalid/unusable values.
 func TestBranchUserFromEmail(t *testing.T) {
 	requireGit(t)
 	setupIsolatedGitEnv(t)
@@ -435,6 +448,8 @@ func TestBranchUserFromEmail(t *testing.T) {
 	}
 }
 
+// TestValidateBranchName checks the wrapper used by CLI flags rejects empty or
+// invalid git branch names and accepts a typical user/twig ref.
 func TestValidateBranchName(t *testing.T) {
 	requireGit(t)
 	setupIsolatedGitEnv(t)
@@ -454,6 +469,8 @@ func TestValidateBranchName(t *testing.T) {
 	}
 }
 
+// TestPrintPushAdvice ensures push instructions are helpful when the repo has
+// no remotes, a single remote, or multiple remotes.
 func TestPrintPushAdvice(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -502,6 +519,8 @@ func TestPrintPushAdvice(t *testing.T) {
 	}
 }
 
+// TestPrintErrorAndPanic exercises the "friendly error" interface used by the
+// CLI so humans see messages instead of stack traces.
 func TestPrintErrorAndPanic(t *testing.T) {
 	{
 		var out bytes.Buffer
@@ -526,6 +545,8 @@ func TestPrintErrorAndPanic(t *testing.T) {
 	}
 }
 
+// TestRunCreateBranchViaRun drives the `branch create` subcommand through the
+// run() entrypoint and confirms it is idempotent.
 func TestRunCreateBranchViaRun(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
@@ -548,6 +569,8 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	}
 }
 
+// TestRunStartOnboardingFlow exercises the "first group member" happy path:
+// create/push the shared twig, create the personal branch, and push it.
 func TestRunStartOnboardingFlow(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -576,6 +599,8 @@ func TestRunStartOnboardingFlow(t *testing.T) {
 	}
 }
 
+// TestRunJoinOnboardingFlow exercises the "next group member" happy path: join
+// from an existing shared twig and publish the personal branch.
 func TestRunJoinOnboardingFlow(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -604,6 +629,8 @@ func TestRunJoinOnboardingFlow(t *testing.T) {
 	}
 }
 
+// TestRunInitSuggestsStartThenJoin verifies init chooses `start` when the twig
+// doesn't exist yet and `join` once it does.
 func TestRunInitSuggestsStartThenJoin(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -638,6 +665,8 @@ func TestRunInitSuggestsStartThenJoin(t *testing.T) {
 	}
 }
 
+// TestRunInitJoinDetachedHeadDoesNotRequireBase ensures init can still join an
+// existing twig even when the repo is in a detached-HEAD state.
 func TestRunInitJoinDetachedHeadDoesNotRequireBase(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -669,6 +698,8 @@ func TestRunInitJoinDetachedHeadDoesNotRequireBase(t *testing.T) {
 	}
 }
 
+// TestRunInitPlanDetachedHeadShowsBaseHint ensures init's --plan output helps
+// the user understand that `start` requires an explicit --base when detached.
 func TestRunInitPlanDetachedHeadShowsBaseHint(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -693,6 +724,8 @@ func TestRunInitPlanDetachedHeadShowsBaseHint(t *testing.T) {
 	}
 }
 
+// TestRunInitAbortAfterFetch verifies the interactive flow supports aborting
+// after the fetch step without leaving the repo in a broken state.
 func TestRunInitAbortAfterFetch(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -713,6 +746,8 @@ func TestRunInitAbortAfterFetch(t *testing.T) {
 	}
 }
 
+// TestRunInitDetachedHeadStartRequiresBase ensures init fails fast when the repo
+// is detached and it would need to run `start` (because no twig exists yet).
 func TestRunInitDetachedHeadStartRequiresBase(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -731,6 +766,8 @@ func TestRunInitDetachedHeadStartRequiresBase(t *testing.T) {
 	}
 }
 
+// TestRunStartPlanOutput checks `start --plan` emits the same git commands the
+// usage text teaches users to run (fetch, create twig, create personal branch).
 func TestRunStartPlanOutput(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -759,6 +796,8 @@ func TestRunStartPlanOutput(t *testing.T) {
 	}
 }
 
+// TestRunStartFailsWhenTwigExistsOnRemote ensures we protect users from
+// accidentally clobbering a twig that already exists upstream.
 func TestRunStartFailsWhenTwigExistsOnRemote(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -778,6 +817,7 @@ func TestRunStartFailsWhenTwigExistsOnRemote(t *testing.T) {
 	}
 }
 
+// TestRunJoinPlanOutput checks `join --plan` emits realistic git commands.
 func TestRunJoinPlanOutput(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -805,6 +845,8 @@ func TestRunJoinPlanOutput(t *testing.T) {
 	}
 }
 
+// TestRunJoinFailsWhenTwigMissingOnRemote ensures we surface a clear error when
+// a user tries to join a twig that has not been published yet.
 func TestRunJoinFailsWhenTwigMissingOnRemote(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -822,6 +864,8 @@ func TestRunJoinFailsWhenTwigMissingOnRemote(t *testing.T) {
 	}
 }
 
+// TestRunJoinUsesExistingRemotePersonalBranch verifies join prefers checking
+// out an existing remote personal branch instead of re-creating it from twig.
 func TestRunJoinUsesExistingRemotePersonalBranch(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -856,6 +900,8 @@ func TestRunJoinUsesExistingRemotePersonalBranch(t *testing.T) {
 	}
 }
 
+// TestIsDirtyCleanAndDirty exercises the isDirty helper for clean and dirty
+// working trees.
 func TestIsDirtyCleanAndDirty(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -879,6 +925,8 @@ func TestIsDirtyCleanAndDirty(t *testing.T) {
 	}
 }
 
+// TestIsDirtyOutsideRepoErrors ensures isDirty errors when invoked outside a
+// git worktree (a common user mistake).
 func TestIsDirtyOutsideRepoErrors(t *testing.T) {
 	requireGit(t)
 	setupIsolatedGitEnv(t)
@@ -891,6 +939,8 @@ func TestIsDirtyOutsideRepoErrors(t *testing.T) {
 	}
 }
 
+// TestResolveTwigPrompting covers interactive prompting, non-interactive
+// validation, and inference when already on a user/twig branch.
 func TestResolveTwigPrompting(t *testing.T) {
 	{
 		var stderr bytes.Buffer
@@ -941,6 +991,8 @@ func TestResolveTwigPrompting(t *testing.T) {
 	}
 }
 
+// TestResolveRemotePromptingAndErrors covers explicit `--remote`, error paths
+// for missing remotes, and the interactive selection prompt.
 func TestResolveRemotePromptingAndErrors(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1005,6 +1057,8 @@ func TestResolveRemotePromptingAndErrors(t *testing.T) {
 	}
 }
 
+// TestRunGitPlanModesAndConfirm verifies runGitPlan's plan/dry-run output and
+// interactive confirmation behavior.
 func TestRunGitPlanModesAndConfirm(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1068,6 +1122,8 @@ func TestRunGitPlanModesAndConfirm(t *testing.T) {
 	}
 }
 
+// TestRunGitPlanYesAndErrors verifies --yes runs steps without prompting and
+// that step failures propagate as errors.
 func TestRunGitPlanYesAndErrors(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1132,6 +1188,8 @@ func TestRunGitPlanYesAndErrors(t *testing.T) {
 	}
 }
 
+// TestRunCreateBranchDirtyFails ensures branch creation refuses to proceed when
+// the working tree is dirty and returns a user-actionable message.
 func TestRunCreateBranchDirtyFails(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
@@ -1151,6 +1209,8 @@ func TestRunCreateBranchDirtyFails(t *testing.T) {
 	}
 }
 
+// TestEnsureCleanCommitDirtyNoPush verifies `-c` (commit dirty) creates a local
+// commit when the worktree is dirty, and `-n` (no push) avoids remote writes.
 func TestEnsureCleanCommitDirtyNoPush(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1177,6 +1237,8 @@ func TestEnsureCleanCommitDirtyNoPush(t *testing.T) {
 	}
 }
 
+// TestEnsureCleanAllowsDirtyWhenNotRequired ensures callers can choose to only
+// warn about a dirty worktree instead of failing.
 func TestEnsureCleanAllowsDirtyWhenNotRequired(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1192,6 +1254,8 @@ func TestEnsureCleanAllowsDirtyWhenNotRequired(t *testing.T) {
 	}
 }
 
+// TestEnsureCleanCommitDirtyPushes verifies a dirty-tree auto-commit is pushed
+// when pushing is enabled and an upstream remote exists.
 func TestEnsureCleanCommitDirtyPushes(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1219,6 +1283,8 @@ func TestEnsureCleanCommitDirtyPushes(t *testing.T) {
 	}
 }
 
+// TestRequireUserBranchUsageError ensures commands that require a `user/twig`
+// branch fail with a usageError when run from another branch.
 func TestRequireUserBranchUsageError(t *testing.T) {
 	repo := initRepo(t)
 	gitSwitchCreate(t, repo, "feature-x")
@@ -1235,6 +1301,8 @@ func TestRequireUserBranchUsageError(t *testing.T) {
 	}
 }
 
+// TestRunMergeCleanAndNoop ensures merges create a merge commit when needed and
+// succeed as a no-op when already up-to-date.
 func TestRunMergeCleanAndNoop(t *testing.T) {
 	repo := initRepo(t)
 
@@ -1285,6 +1353,9 @@ func TestRunMergeCleanAndNoop(t *testing.T) {
 	}
 }
 
+// TestRunMergeConflictRequiresResolution simulates a merge conflict and verifies
+// mob-consensus runs the configured mergetool and completes the merge once the
+// index is resolved.
 func TestRunMergeConflictRequiresResolution(t *testing.T) {
 	repo := initRepo(t)
 
@@ -1324,6 +1395,8 @@ func TestRunMergeConflictRequiresResolution(t *testing.T) {
 	}
 }
 
+// TestRunDiscoveryStatusLines checks discovery prints the correct relationship
+// labels (ahead/behind/diverged/synced) for a representative set of branches.
 func TestRunDiscoveryStatusLines(t *testing.T) {
 	repo := initRepo(t)
 
@@ -1366,6 +1439,8 @@ func TestRunDiscoveryStatusLines(t *testing.T) {
 	}
 }
 
+// TestSmartPushErrors exercises smartPush error paths to ensure we provide
+// actionable configuration guidance.
 func TestSmartPushErrors(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1398,6 +1473,8 @@ func TestSmartPushErrors(t *testing.T) {
 	}
 }
 
+// TestResolveMergeTargetLocalAndMissing verifies resolveMergeTarget accepts a
+// local ref without confirmation and returns a friendly error for missing refs.
 func TestResolveMergeTargetLocalAndMissing(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1422,6 +1499,8 @@ func TestResolveMergeTargetLocalAndMissing(t *testing.T) {
 	}
 }
 
+// TestFetchSuggestedRemoteSelection covers fetchSuggestedRemote behavior with
+// zero remotes, a sole remote, an explicit remote prefix, and ambiguity errors.
 func TestFetchSuggestedRemoteSelection(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1459,6 +1538,8 @@ func TestFetchSuggestedRemoteSelection(t *testing.T) {
 	}
 }
 
+// TestGitOutputErrorIncludesStderr ensures gitOutput errors include git's stderr
+// in the error string, because that's where most actionable diagnostics are.
 func TestGitOutputErrorIncludesStderr(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1475,6 +1556,9 @@ func TestGitOutputErrorIncludesStderr(t *testing.T) {
 	}
 }
 
+// TestResolveMergeTargetRemoteCandidates checks shorthand resolution of
+// `user/twig` when it only exists as a remote-tracking ref and covers ambiguity
+// when more than one remote has a matching branch.
 func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1546,6 +1630,8 @@ func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
 	}
 }
 
+// TestRunMergeBranchNotFoundShowsDiscovery ensures a bad merge argument yields a
+// friendly error and prints discovery output so the user can pick a valid branch.
 func TestRunMergeBranchNotFoundShowsDiscovery(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1609,6 +1695,8 @@ func TestRunMergeBranchNotFoundShowsDiscovery(t *testing.T) {
 	}
 }
 
+// TestRunMergeRemoteResolutionConfirm ensures remote shorthand resolution asks
+// for confirmation before merging from a remote-tracking ref.
 func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1674,6 +1762,8 @@ func TestRunMergeRemoteResolutionConfirm(t *testing.T) {
 	}
 }
 
+// TestSuggestedRemoteFromUpstream ensures we infer the remote name from the
+// current branch's upstream when possible.
 func TestSuggestedRemoteFromUpstream(t *testing.T) {
 	repo := initRepo(t)
 	origin := initBareRemote(t)
@@ -1694,6 +1784,8 @@ func TestSuggestedRemoteFromUpstream(t *testing.T) {
 	}
 }
 
+// TestPrintUsageWithRemotes checks usage text can be personalized with the
+// inferred remote and includes the available remotes list.
 func TestPrintUsageWithRemotes(t *testing.T) {
 	repo := initRepo(t)
 	origin := initBareRemote(t)
@@ -1715,6 +1807,8 @@ func TestPrintUsageWithRemotes(t *testing.T) {
 	}
 }
 
+// TestRunDiscoveryViaRun drives the `status` subcommand through run() to cover
+// argument parsing and command dispatch.
 func TestRunDiscoveryViaRun(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1741,6 +1835,8 @@ func TestRunDiscoveryViaRun(t *testing.T) {
 	}
 }
 
+// TestRunMergeViaRun drives a merge through the full CLI path (run()) to cover
+// parsing, merge target resolution, and merge plumbing together.
 func TestRunMergeViaRun(t *testing.T) {
 	origin := initBareRemote(t)
 
@@ -1778,6 +1874,8 @@ func TestRunMergeViaRun(t *testing.T) {
 	}
 }
 
+// TestSmartPushSuccessPaths verifies smartPush selects a remote when configured
+// via upstream, branch.pushRemote, remote.pushDefault, or when there's only one remote.
 func TestSmartPushSuccessPaths(t *testing.T) {
 	repo := initRepo(t)
 	origin := initBareRemote(t)

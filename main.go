@@ -30,6 +30,7 @@ import (
 // usageTemplate is rendered for `mob-consensus -h` and for usage errors.
 // It's embedded so the binary is self-contained and help text is maintained as
 // a readable template rather than line-by-line print calls.
+//
 //go:embed usage.tmpl
 var usageTemplate string
 
@@ -48,10 +49,10 @@ const (
 type options struct {
 	// force bypasses the "<user>/" branch requirement for commands that normally
 	// insist you're working on a personal branch.
-	force       bool
+	force bool
 	// noPush disables automatic pushes after commits/merges (including -c
 	// auto-commits).
-	noPush      bool
+	noPush bool
 	// commitDirty allows mob-consensus to commit existing working tree changes
 	// before continuing. When true, and noPush is false, mob-consensus also
 	// pushes the auto-commit via smartPush.
@@ -60,18 +61,18 @@ type options struct {
 	otherBranch string
 
 	// twig is the shared coordination branch name (suffix) such as "feature-x".
-	twig   string
+	twig string
 	// base is a git ref used by onboarding and branch creation (e.g., "main",
 	// "origin/feature-x", "HEAD", or a commit SHA).
-	base   string
+	base string
 	// remote is the selected remote name for onboarding operations.
 	remote string
 	// plan prints a structured plan (commands + explanations) and exits.
-	plan   bool
+	plan bool
 	// dryRun prints the git commands that would run without executing them.
 	dryRun bool
 	// yes accepts defaults and skips confirmation prompts.
-	yes    bool
+	yes bool
 }
 
 // exitFunc exists so tests can stub process exit without terminating the test
@@ -519,11 +520,11 @@ func isDirty(ctx context.Context) (bool, error) {
 // resolveTwig determines the shared twig name for onboarding commands.
 //
 // Priority:
-//  1) explicit --twig
-//  2) infer from the current branch name
+//  1. explicit --twig
+//  2. infer from the current branch name
 //     - if on "<user>/<twig>", use that twig
 //     - if on a non-main branch, reuse its basename as the twig
-//  3) prompt the user (interactive mode only)
+//  3. prompt the user (interactive mode only)
 //
 // In non-interactive plan/dry-run/--yes mode, twig must be unambiguous or
 // passed explicitly.
@@ -582,9 +583,9 @@ func resolveBase(opts options, currentBranch string) string {
 // resolveRemote selects a remote to use for onboarding fetch/push operations.
 //
 // Priority:
-//  1) explicit --remote (must exist)
-//  2) if unambiguous: upstream remote or only remote
-//  3) prompt the user (interactive mode only)
+//  1. explicit --remote (must exist)
+//  2. if unambiguous: upstream remote or only remote
+//  3. prompt the user (interactive mode only)
 //
 // In non-interactive plan/dry-run/--yes mode, the remote must be unambiguous or
 // passed explicitly.
@@ -785,11 +786,11 @@ func runInit(ctx context.Context, opts options, user, currentBranch string, stdo
 }
 
 // runStart implements the "first group member" onboarding flow:
-//   1) fetch
-//   2) create the shared twig branch from a base ref
-//   3) push the twig (required so others can join)
-//   4) create/switch to the user's personal branch (<user>/<twig>)
-//   5) push the personal branch
+//  1. fetch
+//  2. create the shared twig branch from a base ref
+//  3. push the twig (required so others can join)
+//  4. create/switch to the user's personal branch (<user>/<twig>)
+//  5. push the personal branch
 func runStart(ctx context.Context, opts options, user, currentBranch string, stdout, stderr io.Writer) error {
 	if opts.plan || opts.dryRun {
 		dirty, err := isDirty(ctx)
@@ -906,10 +907,10 @@ func runStart(ctx context.Context, opts options, user, currentBranch string, std
 }
 
 // runJoin implements the "next group member" onboarding flow:
-//   1) fetch
-//   2) create a local twig branch tracking <remote>/<twig> (if needed)
-//   3) create/switch to the user's personal branch (<user>/<twig>)
-//   4) push the personal branch
+//  1. fetch
+//  2. create a local twig branch tracking <remote>/<twig> (if needed)
+//  3. create/switch to the user's personal branch (<user>/<twig>)
+//  4. push the personal branch
 func runJoin(ctx context.Context, opts options, user, currentBranch string, stdout, stderr io.Writer) error {
 	if opts.plan || opts.dryRun {
 		dirty, err := isDirty(ctx)

@@ -1,5 +1,10 @@
 //go:build unix
 
+// Package tuidemo is a tiny raw-mode TUI used by experiments under `x/tui-test`.
+//
+// The goal is to have something "real enough" to exercise PTY-driven
+// automation: it writes recognizable sentinel strings, uses ANSI escape
+// sequences to update the screen, and reads single bytes from stdin.
 package tuidemo
 
 import (
@@ -9,6 +14,11 @@ import (
 	"golang.org/x/term"
 )
 
+// Run starts the demo TUI.
+//
+// It switches the terminal into raw mode, hides the cursor, and then loops
+// reading single bytes. Pressing 'q' exits; any other byte updates a status line
+// showing the last byte received.
 func Run() error {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
@@ -47,6 +57,7 @@ func Run() error {
 	return nil
 }
 
+// printableByte returns a printable representation for b for display purposes.
 func printableByte(b byte) string {
 	if b >= 0x20 && b <= 0x7e {
 		return string([]byte{b})
