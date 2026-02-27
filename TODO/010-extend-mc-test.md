@@ -11,6 +11,12 @@ by default) the full `mob-consensus` workflow with multiple simulated
 users who **actually create, modify, and merge files across clones**,
 and produce a repeatable coverage report.
 
+## Decisions (locked in)
+
+- Conflict automation: **parameterized** resolution strategy (`ours` vs `theirs`) instead of hard-coding.
+- Coverage: `mc-test coverage` runs **both** unit coverage and system/integration coverage by default.
+- Coverage enforcement: **report-only** for now (no warn/fail threshold), until the suite stabilizes.
+
 ## What we must cover
 
 - Branch creation:
@@ -55,14 +61,32 @@ and produce a repeatable coverage report.
 - [ ] 010.5 Add scenario `multi-remote-fetch`:
   - [x] 010.5.1 With 2 remotes and no upstream, assert discovery fails with a clear “multiple remotes” error.
   - [x] 010.5.2 With upstream set, assert discovery proceeds.
-  - [ ] 010.5.3 Add merge-mode coverage under multi-remote setups (both “ambiguous remotes” errors and “explicit remote works”).
+  - [ ] 010.5.3 Add merge-mode coverage under multi-remote setups:
+    - [ ] 010.5.3.1 Ambiguous shorthand merge target:
+      - Setup: two remotes (e.g. `origin` + `jj`) both have `<peer>/<twig>` remote-tracking refs.
+      - Action: `mob-consensus merge <peer>/<twig>`
+      - Assert: fails with a clear “ambiguous” error listing exact candidates (`origin/<peer>/<twig>`, `jj/<peer>/<twig>`) and a hint to retry with an explicit remote ref.
+    - [ ] 010.5.3.2 Explicit remote merge works:
+      - Action: `mob-consensus merge origin/<peer>/<twig>`
+      - Assert: succeeds (and co-author trailers are preserved where applicable).
 - [x] 010.6 Add scenario `converge` (real multi-user workflow):
   - [x] 010.6.1 Each user makes at least one commit touching real files (not just empty commits) and pushes.
   - [x] 010.6.2 Leader merges peers; peers merge leader; everyone pushes.
   - [x] 010.6.3 Final discovery output on each user reports peer branches are `synced`.
 - [ ] 010.7 Add conflict coverage (two tiers):
-  - [ ] 010.7.1 Automated: configure a non-interactive `mergetool.vimdiff.cmd` that resolves deterministically (e.g., choose “theirs”) so CI can exercise the conflict path without opening editors.
-  - [ ] 010.7.2 Manual: add a `--interactive` recipe that intentionally creates a conflict and documents the expected UX (mergetool + difftool + commit).
+  - [ ] 010.7.1 Automated (noninteractive, deterministic):
+    - [ ] 010.7.1.1 Add a harness flag/env to select conflict resolution strategy:
+      - Proposed: `mc-test run ... --conflict-strategy ours|theirs` (also record into `ROOT/mc-test.env`).
+      - Default: `ours`.
+    - [ ] 010.7.1.2 Add scenario `conflict`:
+      - Create a deterministic conflict on a known file (e.g. `conflict.txt`) between leader and peer branches.
+      - Configure repo-local mergetool cmd to resolve deterministically:
+        - `ours`: `git checkout --ours -- conflict.txt && git add conflict.txt`
+        - `theirs`: `git checkout --theirs -- conflict.txt && git add conflict.txt`
+      - Assert: merge exits 0, file has no conflict markers, and content matches strategy; merge commit created if appropriate.
+  - [ ] 010.7.2 Manual (interactive recipe):
+    - Document `mc-test ... --interactive` steps and expected UX (prompts, mergetool + difftool + commit message editor).
+    - Explain why this scenario can’t be fully automated without configuring a deterministic mergetool.
 
 ## Coverage reporting
 
@@ -78,8 +102,17 @@ We need two kinds of coverage:
 while creating real repos.
 - [ ] 010.9 Implement Go “system tests” (see TODO 003) that create the
   same harness layout via `t.TempDir()` and drive `mob-consensus`
-  logic (ideally in-process) so the merge/discovery/create-branch
-  paths contribute to the coverprofile.
+  logic in-process via `run()` so merge/discovery/create-branch paths
+  contribute to the coverprofile:
+  - [ ] 010.9.1 Bootstrap/join + converge workflow contributes meaningful coverage.
+  - [ ] 010.9.2 Multi-remote ambiguity + explicit remote merge success.
+  - [ ] 010.9.3 Conflict path using deterministic mergetool config (ours/theirs).
+  - [ ] 010.9.4 Safety requirements:
+    - all repos under `t.TempDir()` only
+    - isolate `HOME`/`XDG_CONFIG_HOME`
+    - no network
+    - use repo-local git config for identity and tooling
+    - tests should use the same git commands shown in `usage.tmpl` when practical; deviations must be explained in code comments.
 - [ ] 010.10 Decide/record an initial minimum coverage target (start
   low, raise over time).
 
@@ -109,9 +142,15 @@ Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
     - [x] 010.11.5.3 No remotes
     - [x] 010.11.5.4 Multiple remotes (push ambiguity)
     - [x] 010.11.5.5 Ambiguous merge target across remotes
-- [ ] 010.12 Extend `mc-test coverage` to optionally include system tests:
-  - [ ] 010.12.1 Add `mc-test coverage --system` (or `--tags system`) to run `go test -tags=system -coverprofile=... ./...`.
-  - [ ] 010.12.2 If we keep unit-only as the default, update usage text so users know the difference.
+- [ ] 010.12 Update `mc-test coverage` to run both unit + system coverage by default and fail if either test run fails:
+  - [ ] 010.12.1 Unit run: `go test -coverprofile=$ROOT/coverage.unit.out ./...`
+  - [ ] 010.12.2 System run: `go test -tags=system -coverprofile=$ROOT/coverage.system.out ./...`
+  - [ ] 010.12.3 For each profile:
+    - write `go tool cover -func` output to `coverage.(unit|system).func.txt`
+    - write total summary to `coverage.(unit|system).total.txt`
+  - [ ] 010.12.4 For the system profile (primary signal):
+    - write `coverage.zero.txt` and `coverage.low.txt`
+  - [ ] 010.12.5 Safety: keep outputs under `ROOT/` only; never write coverage artifacts into the source repo.
 
 ## Notes / risks
 
