@@ -14,7 +14,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 002 - System test harness + manual plan (`TODO/002-system-test-harness.md`)
 - [ ] 003 - Automated system testing plan (`TODO/003-automated-system-test-plan.md`)
 - [ ] 007 - Integrate JJ fork changes (`TODO/007-integrate-jj-fork-changes.md`)
-- [ ] 008 - Support fork-based collaboration (`TODO/008-support-fork-remotes.md`)
+- [ ] 008 - Support peer-to-peer multi-remote collaboration (`TODO/008-support-fork-remotes.md`)
 - [x] 001 - Rewrite mob-consensus in Go (`TODO/001-rewrite-mob-consensus-in-go.md`)
 - [ ] 006 - Simplify getting started flow (core implemented; remaining resume + harness coverage) (`TODO/006-simplify-getting-started.md`)
 - [ ] 009 - Use mob-consensus for work-item claiming (`TODO/009-work-item-claiming.md`)

@@ -1,13 +1,14 @@
-# TODO 008 - Support fork-based collaboration (multi-remote)
+# TODO 008 - Support peer-to-peer multi-remote collaboration
 
 Context: `mob-consensus` was originally used where collaborators all
-have write access to a single shared remote. We also need to support
-the case where each collaborator only has write access to **their own
-fork**, and other collaborators can only fetch from it.
+have write access to a single shared remote. In practice, many teams
+work peer-to-peer: each collaborator pushes only to **their own**
+remote (often their fork), and everyone else fetches from it.
 
 Goal: make discovery/merge/push workflows work predictably with multiple
-remotes (ex: `origin` = your fork, `upstream` = canonical, plus `jj`,
-`bob`, etc).
+remotes (ex: your remote = `origin`, plus collaborator remotes like
+`jj`, `bob`, etc). There should be no special “fork mode”: multi-remote
+is the normal case.
 
 ## Can mob-consensus do this already?
 
@@ -20,28 +21,31 @@ Partially:
   present and up to date locally*.
 
 Gaps:
-- The tool currently runs `git fetch` with no remote specified; this does
-  not necessarily update all remotes in a multi-fork setup.
-- Auto-push behavior can fail if the current branch’s upstream remote is
-  not writable (common when tracking a shared twig on someone else’s
-  fork, or tracking `upstream/*`).
-  - Policy: mob-consensus should only ever push to a configured “push
-    remote” (normally your fork, often named `origin`) and never push to
-    `upstream` (canonical) or collaborator remotes.
-- Help/examples currently assume a single “chosen remote” for peer refs;
-  in fork workflows the peer remote varies by collaborator.
+- Fetch policy: the tool must fetch *all relevant remotes* (or error and
+  require explicit configuration) so discovery/merge targets are up to
+  date in a multi-remote setup.
+- Push policy: mob-consensus must never push to a collaborator remote.
+  In a peer-to-peer model, you always push only to **your** remote.
+  Using an upstream remote as a push target is unsafe because upstream
+  can be set to someone else’s remote.
+- UX/docs: help/examples should explain the peer-to-peer model and stop
+  implying there is a single shared writable remote.
 
 ## Proposed behavior (high level)
 
 - Separate concerns:
-  - **Fetch remotes**: which remotes to update for discovery/merge inputs.
-  - **Push remote**: where *your* branch should be pushed (your fork).
-  - **Twig source remote** (optional): where a “shared twig” branch is
-    fetched from for onboarding (in fork workflows this may be the first
-    group member’s fork). This is fetch-only; pushes still go only to
-    the push remote.
+  - **Fetch remotes**: which remotes to update for discovery/merge inputs
+    (usually “all collaborators”).
+  - **Push remote**: where *your* branch should be pushed (your remote).
 
 - Prefer deterministic behavior and clear errors over guessing.
+
+## Decisions (locked in)
+
+- Peer-to-peer is the default: users fetch from many remotes but push
+  only to their own remote.
+- Push remote must be explicitly configured (prefer `branch.<name>.pushRemote`
+  or `remote.pushDefault`). Do not push to an upstream remote.
 
 ## Repo-tracked collaborator configuration
 
@@ -86,10 +90,23 @@ Pros:
 
 Cons:
 - Needs clear terminology: “user” here means *collaborator identity*, not the local OS user.
-  - XXX directory name is full email name, config file in directory
-    includes twig name 
 - Git remote names are local state; storing “remote = jj” in a repo-tracked file can be wrong on someone else’s machine unless we standardize remote naming (ex: remote name == collaborator id) or store URLs and have `mob-consensus init` add/verify remotes.
 - Risk of mixing in per-local-user defaults that should instead live in `.git/config` or a non-committed local file.
+
+### Recommended layout (decision)
+
+Use a repo-tracked config directory with one collaborator per directory:
+- `.mob-consensus/u/<id>/remote.url`
+
+Where `<id>` is the collaborator id used in branch names (the email local-part,
+e.g. `alice` from `alice@example.com`). This avoids `@` in paths and keeps the
+branch naming and collaborator naming aligned.
+
+Possible future contents:
+- `.mob-consensus/defaults` (team-wide defaults like preferred twig name)
+- `.mob-consensus/u/<id>/notes.md` (human notes)
+- `.mob-consensus/u/<id>/mode` / `review-policy` (non-secret preferences)
+- `.mob-consensus/u/<id>/remote.urls` (multiple URLs for the same collaborator)
 
 ### Naming options
 
@@ -129,18 +146,16 @@ or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
 - [ ] 008.1 Define CLI/config knobs (keep defaults safe).
   - [ ] 008.1.1 Add `--fetch <remote>` (repeatable) and/or `--fetch-all`
     (`git fetch --all`) for multi-remote discovery/merge.
-  - [ ] 008.1.2 Add `--push-remote <remote>` (or support using
-    `git config remote.pushDefault`) for upstreamless pushes.
-    - Push remote should be your fork (often `origin`); never push to
-      `upstream` or collaborator remotes.
-  - [ ] 008.1.3 (Optional) Add `--twig-remote <remote>` for onboarding:
-    where the “shared twig” branch is fetched from. (In a `start` flow,
-    the twig is created and pushed to the push remote; in a `join` flow,
-    the twig is fetched from someone else’s fork.)
-  - [ ] 008.1.4 Add a repo-tracked collaborator config (file or dir) that lists remotes.
-    - [ ] 008.1.4.1 Decide: single file vs config dir; pick a name/path.
-    - [ ] 008.1.4.2 Decide format (TOML vs line-oriented `.conf` vs JSON).
-    - [ ] 008.1.4.3 Define minimal schema: collaborator remotes + optional defaults.
+  - [ ] 008.1.2 Define a push-remote selection policy that is safe for peer-to-peer:
+    - prefer `branch.<name>.pushRemote`
+    - else `remote.pushDefault`
+    - else error (do not guess; do not use upstream)
+  - [ ] 008.1.3 Clarify flag semantics for multi-remote:
+    - `--remote` (if kept) should be fetch-only.
+    - Push always uses the configured push-remote policy above.
+  - [ ] 008.1.4 Add a repo-tracked collaborator config directory that lists collaborator remotes:
+    - [ ] 008.1.4.1 Adopt `.mob-consensus/u/<id>/remote.url` (one collaborator per directory).
+    - [ ] 008.1.4.2 Define minimal schema: collaborator ids + remote URLs + optional defaults.
 - [ ] 008.2 Update fetch logic.
   - [ ] 008.2.1 Default behavior: fetch in a way that reliably updates
     collaborator remotes (do not rely on a single “upstream remote”).
@@ -158,20 +173,20 @@ or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
     a unique `*/bob/feature-x` across remotes; if ambiguous, error and
     list candidates.
 - [ ] 008.4 Make push behavior fork-friendly.
-  - [ ] 008.4.1 Determine a “push remote” (never guess when ambiguous):
+  - [ ] 008.4.1 Determine a “push remote” using only explicit configuration:
     - prefer `branch.<name>.pushRemote`
     - else `remote.pushDefault`
-    - else `origin` if present
+    - else error (do not guess; do not use upstream)
   - [ ] 008.4.2 Always push explicitly to the push remote (avoid bare
-    `git push` which can target an unwritable upstream remote).
+    `git push` which can target a collaborator remote via upstream).
   - [ ] 008.4.4 Ensure we never silently push to a guessed remote when
     multiple remotes exist.
 - [ ] 008.5 Update help/docs to cover forks explicitly.
-  - [ ] 008.5.1 Add a short “fork workflow” section to `usage.tmpl`:
-    add collaborator remotes and merge from `REMOTE/<user>/<twig>`.
-  - [ ] 008.5.2 Explain how to configure push remote for fork workflows
-    (example: `git config --local remote.pushDefault <your-fork-remote>`).
-  - [ ] 008.5.3 Ensure examples don’t assume `origin`.
+  - [ ] 008.5.1 Add a short “peer-to-peer” section to `README.md` explaining:
+    fetch from collaborators, push only to your remote, converge by repeated merge cycles.
+  - [ ] 008.5.2 Update `usage.tmpl` and examples to stop implying a single shared writable remote.
+  - [ ] 008.5.3 Explain how to configure push remote (example: `git config --local remote.pushDefault <your-remote>`).
+  - [ ] 008.5.4 Ensure examples don’t assume `origin`.
 - [ ] 008.6 Testing
   - [ ] 008.6.1 Extend TODO 002 harness to add multiple remotes.
   - [ ] 008.6.3 Add system tests (TODO 003) for: merge from a

@@ -4,6 +4,21 @@
 
 The `<user>` prefix is derived from `git config user.email` (the part left of `@`). For testing you can use addresses like `alice@example.com`, `bob@example.com`, etc.
 
+## Philosophy: peer-to-peer collaboration
+
+`mob-consensus` is designed around a peer-to-peer model:
+
+- Each collaborator **pushes only to their own remote** (often their fork).
+- Each collaborator **fetches from all** other collaborator remotes.
+- The group converges by repeating: fetch peers → merge → push → peers fetch you.
+
+In multi-remote repos, configure your push remote explicitly so automated pushes don’t target a collaborator by mistake:
+
+- Default for all branches: `git config --local remote.pushDefault <your-remote>`
+- Per-branch override: `git config --local branch.<name>.pushRemote <your-remote>`
+
+(Planned: a repo-tracked collaborator registry under `.mob-consensus/`; see TODO 008.)
+
 ## Install / Upgrade
 
 - Install latest: `go install github.com/stevegt/mob-consensus@latest`
