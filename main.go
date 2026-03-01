@@ -66,7 +66,7 @@ type options struct {
 	// "origin/feature-x", "HEAD", or a commit SHA).
 	base string
 	// remote is the selected remote name for onboarding operations.
-	remote string
+	remote string // fetch-only (used by init/start/join to locate twig)
 	// plan prints a structured plan (commands + explanations) and exits.
 	plan bool
 	// dryRun prints the git commands that would run without executing them.
@@ -354,10 +354,91 @@ func listRemotes(ctx context.Context) ([]string, error) {
 	return remotes, nil
 }
 
-// fetchSuggestedRemote runs `git fetch <remote>` using the same policy as
-// suggestedRemote (upstream remote or only remote), with one extra heuristic:
-// if otherBranch is prefixed with a remote name (ex: "jj/alice/feature-x"), we
-// fetch that remote.
+// registryRemoteURL returns the remote URL for the given collaborator id from
+// the repo-tracked registry (.mob-consensus/u/<id>/remote.url). It returns an
+// empty string if no entry exists.
+func registryRemoteURL(id string) (string, error) {
+	if strings.TrimSpace(id) == "" {
+		return "", nil
+	}
+	path := filepath.Join(".mob-consensus", "u", id, "remote.url")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// ensurePushRemote picks (or creates) a push remote for the current user and
+// sets git config so pushes are unambiguous. It returns the chosen remote.
+//
+// Selection order:
+//  1. if only one remote exists, use it
+//  2. if a remote named <user> exists, use it
+//  3. if registry has .mob-consensus/u/<user>/remote.url, ensure a remote named
+//     <user> exists with that URL (add or set-url), then use it
+//
+// Otherwise return an error listing available remotes and instructions to add
+// the user's remote.
+func ensurePushRemote(ctx context.Context, user string) (string, error) {
+	remotes, err := listRemotes(ctx)
+	if err != nil {
+		return "", err
+	}
+	if len(remotes) == 1 {
+		return remotes[0], nil
+	}
+	for _, r := range remotes {
+		if r == user {
+			return r, nil
+		}
+	}
+
+	// Try collaborator registry.
+	url, err := registryRemoteURL(user)
+	if err != nil {
+		return "", err
+	}
+	if url != "" {
+		// Add or update the remote named <user>.
+		if err := gitRun(ctx, "remote", "add", user, url); err != nil {
+			// remote might already exist with a different URL; set-url in that case.
+			_ = gitRun(ctx, "remote", "set-url", user, url)
+		}
+		return user, nil
+	}
+
+	if len(remotes) == 0 {
+		return "", errors.New("mob-consensus: no git remotes configured; add your remote (e.g., git remote add origin <url>)")
+	}
+
+	sort.Strings(remotes)
+	return "", fmt.Errorf("mob-consensus: cannot determine your push remote; add/rename a remote to %q or set remote.pushDefault (available: %s)", user, strings.Join(remotes, ", "))
+}
+
+// configurePushRemote writes git config so pushes are unambiguous for the given
+// branch, using the chosen push remote.
+func configurePushRemote(ctx context.Context, pushRemote, branch string) error {
+	if pushRemote == "" || branch == "" {
+		return errors.New("mob-consensus: push remote or branch is empty")
+	}
+	if err := gitRun(ctx, "config", "--local", "remote.pushDefault", pushRemote); err != nil {
+		return err
+	}
+	return gitRun(ctx, "config", "--local", "branch."+branch+".pushRemote", pushRemote)
+}
+
+// fetchSuggestedRemote updates remotes so subsequent operations see fresh refs.
+//
+// Policy:
+//   - If otherBranch is prefixed with a remote (ex: "jj/alice/feature-x"),
+//     fetch that remote.
+//   - Else if exactly one remote exists, fetch it.
+//   - Else fetch all remotes (`git fetch --all`) so multi-remote discovery/merge
+//     can see peer branches.
 //
 // Fetch failures are fatal.
 func fetchSuggestedRemote(ctx context.Context, otherBranch string) error {
@@ -396,7 +477,8 @@ func fetchSuggestedRemote(ctx context.Context, otherBranch string) error {
 		return gitRun(ctx, "fetch", remotes[0])
 	}
 
-	return fmt.Errorf("mob-consensus: multiple remotes configured (%s); set an upstream or fetch explicitly (e.g., git fetch <remote>)", strings.Join(remotes, ", "))
+	// Multi-remote: update all so peer branches are visible.
+	return gitRun(ctx, "fetch", "--all")
 }
 
 // branchUserFromEmail derives the "<user>" branch prefix from repo-local
@@ -580,7 +662,7 @@ func resolveBase(opts options, currentBranch string) string {
 	return strings.TrimSpace(currentBranch)
 }
 
-// resolveRemote selects a remote to use for onboarding fetch/push operations.
+// resolveRemote selects a remote to use for onboarding fetch operations.
 //
 // Priority:
 //  1. explicit --remote (must exist)
@@ -620,7 +702,7 @@ func resolveRemote(ctx context.Context, cmd command, opts options, stderr io.Wri
 		return "", fmt.Errorf("mob-consensus: %s requires --remote when multiple remotes exist (%s)", cmd, strings.Join(remotes, ", "))
 	}
 
-	fmt.Fprintf(stderr, "Pick remote for fetch/push (%s): ", strings.Join(remotes, ", "))
+	fmt.Fprintf(stderr, "Pick remote for fetch (%s): ", strings.Join(remotes, ", "))
 	in, err := promptString(os.Stdin)
 	if err != nil {
 		return "", err
@@ -831,6 +913,17 @@ func runStart(ctx context.Context, opts options, user, currentBranch string, std
 		return usageError{Err: err}
 	}
 
+	pushRemote := remote
+	if !opts.plan && !opts.dryRun {
+		pushRemote, err = ensurePushRemote(ctx, user)
+		if err != nil {
+			return err
+		}
+		if err := configurePushRemote(ctx, pushRemote, userBranch); err != nil {
+			return err
+		}
+	}
+
 	title := fmt.Sprintf("mob-consensus start (twig=%s, base=%s, remote=%s, user=%s)", twig, base, remote, user)
 	steps := []gitPlanStep{
 		{
@@ -872,7 +965,7 @@ func runStart(ctx context.Context, opts options, user, currentBranch string, std
 		{
 			Explain: fmt.Sprintf("Push shared twig %q (required so others can join)", twig),
 			Args: func(ctx context.Context) ([]string, error) {
-				return []string{"push", "-u", remote, twig}, nil
+				return []string{"push", "-u", pushRemote, twig}, nil
 			},
 		},
 		{
@@ -899,7 +992,7 @@ func runStart(ctx context.Context, opts options, user, currentBranch string, std
 		{
 			Explain: fmt.Sprintf("Push your personal branch %q", userBranch),
 			Args: func(ctx context.Context) ([]string, error) {
-				return []string{"push", "-u", remote, userBranch}, nil
+				return []string{"push", "-u", pushRemote, userBranch}, nil
 			},
 		},
 	}
@@ -944,6 +1037,17 @@ func runJoin(ctx context.Context, opts options, user, currentBranch string, stdo
 	userBranch := user + "/" + twig
 	if err := validateBranchName(ctx, "personal branch", userBranch); err != nil {
 		return usageError{Err: err}
+	}
+
+	pushRemote := remote
+	if !opts.plan && !opts.dryRun {
+		pushRemote, err = ensurePushRemote(ctx, user)
+		if err != nil {
+			return err
+		}
+		if err := configurePushRemote(ctx, pushRemote, userBranch); err != nil {
+			return err
+		}
 	}
 
 	title := fmt.Sprintf("mob-consensus join (twig=%s, remote=%s, user=%s)", twig, remote, user)
@@ -1001,7 +1105,7 @@ func runJoin(ctx context.Context, opts options, user, currentBranch string, stdo
 		{
 			Explain: fmt.Sprintf("Push your personal branch %q", userBranch),
 			Args: func(ctx context.Context) ([]string, error) {
-				return []string{"push", "-u", remote, userBranch}, nil
+				return []string{"push", "-u", pushRemote, userBranch}, nil
 			},
 		},
 	}
@@ -1294,11 +1398,6 @@ func ensureClean(ctx context.Context, opts options, requireClean bool, stdout io
 // If the remote choice is ambiguous it returns a clear error with exact
 // commands the user can run.
 func smartPush(ctx context.Context) error {
-	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
-	if err == nil && upstream != "" {
-		return gitRun(ctx, "push")
-	}
-
 	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return err
@@ -1340,7 +1439,7 @@ func smartPush(ctx context.Context) error {
 
 	sort.Strings(remotes)
 	return fmt.Errorf(
-		"mob-consensus: cannot push: no upstream is set for branch %q and multiple remotes exist: %s (hint: git push -u <remote> %s; or: git config --local remote.pushDefault <remote>)",
+		"mob-consensus: cannot push: no push remote is configured for branch %q and multiple remotes exist: %s (hint: git config --local remote.pushDefault <remote>; or: git config --local branch.%s.pushRemote <remote>)",
 		currentBranch,
 		strings.Join(remotes, ", "),
 		currentBranch,

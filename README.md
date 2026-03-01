@@ -48,7 +48,7 @@ Flags:
 - `-F`: force run even if not on a `<user>/` branch
 - `-c`: commit existing uncommitted changes (required for merge/branch-creation if the tree is dirty)
 - `-n`: no automatic push after commits
-- `--twig`, `--base`, `--remote`: inputs for `init`/`start`/`join`
+- `--twig`, `--base`, `--remote`: inputs for `init`/`start`/`join` (`--remote` controls where to fetch the twig from; pushes always use your configured push remote)
 - `--plan`: print the onboarding plan (commands + explanations) and exit
 - `--dry-run`: print commands only; no prompts or execution
 - `--yes`: accept defaults and run non-interactively
