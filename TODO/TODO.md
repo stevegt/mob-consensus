@@ -11,6 +11,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 010 - Extend mc-test for deeper system coverage (`TODO/010-extend-mc-test.md`)
 - [ ] 011 - Improve merge-conflict review UX (`TODO/011-merge-conflict-review-ux.md`)
 - [ ] 012 - LLM-assisted review and human approval (`TODO/012-llm-assisted-review-and-approval.md`)
+- [ ] 019 - Post-commit AI review automation (`TODO/019-post-commit-ai-review.md`)
 - [ ] 016 - ntfy.sh messaging integration (`TODO/016-ntfy-messaging.md`)
 - [ ] 002 - System test harness + manual plan (`TODO/002-system-test-harness.md`)
 - [ ] 003 - Automated system testing plan (`TODO/003-automated-system-test-plan.md`)
