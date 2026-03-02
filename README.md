@@ -12,10 +12,7 @@ The `<user>` prefix is derived from `git config user.email` (the part left of `@
 - Each collaborator **fetches from all** other collaborator remotes.
 - The group converges by repeating: fetch peers → merge → push → peers fetch you.
 
-In multi-remote repos, configure your push remote explicitly so automated pushes don’t target a collaborator by mistake:
-
-- Default for all branches: `git config --local remote.pushDefault <your-remote>`
-- Per-branch override: `git config --local branch.<name>.pushRemote <your-remote>`
+When multiple remotes exist, keep pushes explicit with `git push -u <your-remote> <branch>` so the upstream is set to your own remote.
 
 (Planned: a repo-tracked collaborator registry under `.mob-consensus/`; see TODO 008.)
 

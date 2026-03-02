@@ -40,7 +40,6 @@ Key design choice differences to preserve from `main`:
   - Prefer: if upstream is missing, run `git push -u <remote>
     <branch>` **only when** a push remote can be selected unambiguously:
     - `branch.<name>.pushRemote`, or
-    - `remote.pushDefault`, or
     - only configured remote.
   - Otherwise: return a clear error telling the user how to push
     and/or set upstream.
@@ -82,8 +81,8 @@ Credit approach:
   - [x] 007.2.3 Upstreamless push: implement a `smartPush` that:
     - [x] 007.2.3.1 Uses plain `git push` when upstream is set.
     - [x] 007.2.3.2 Uses `git push -u <remote> <branch>` only when the
-      push remote is unambiguous (`branch.<name>.pushRemote`, or
-      `remote.pushDefault`, or only remote).
+      push remote is unambiguous (`branch.<name>.pushRemote` or only
+      remote).
     - [x] 007.2.3.3 Otherwise returns a human-readable error with exact
       suggested `git push -u ...` command(s).
   - [x] 007.2.4 Merge target resolution: accept shorthand (e.g.

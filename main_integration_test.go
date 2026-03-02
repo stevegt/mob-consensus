@@ -1467,7 +1467,7 @@ func TestSmartPushErrors(t *testing.T) {
 	gitCmd(t, repo, "remote", "add", "jj", repo)
 	{
 		err := smartPush(ctx)
-		if err == nil || !strings.Contains(err.Error(), "multiple remotes exist") {
+		if err == nil || !strings.Contains(err.Error(), "multiple remotes") {
 			t.Fatalf("expected multiple-remotes error, got: %v", err)
 		}
 	}
@@ -1500,7 +1500,8 @@ func TestResolveMergeTargetLocalAndMissing(t *testing.T) {
 }
 
 // TestFetchSuggestedRemoteSelection covers fetchSuggestedRemote behavior with
-// zero remotes, a sole remote, an explicit remote prefix, and ambiguity errors.
+// zero remotes, a sole remote, an explicit remote prefix, and multi-remote
+// fetch-all default.
 func TestFetchSuggestedRemoteSelection(t *testing.T) {
 	repo := initRepo(t)
 	withCwd(t, repo)
@@ -1524,8 +1525,8 @@ func TestFetchSuggestedRemoteSelection(t *testing.T) {
 		t.Fatalf("fetchSuggestedRemote (remote prefix) err=%v", err)
 	}
 
-	if err := fetchSuggestedRemote(ctx, ""); err == nil || !strings.Contains(err.Error(), "multiple remotes configured") {
-		t.Fatalf("expected multiple-remotes error, got: %v", err)
+	if err := fetchSuggestedRemote(ctx, ""); err != nil {
+		t.Fatalf("fetchSuggestedRemote (multi-remote fetch-all) err=%v", err)
 	}
 
 	gitCmd(t, repo, "push", "-u", "origin", "main")
@@ -1875,7 +1876,7 @@ func TestRunMergeViaRun(t *testing.T) {
 }
 
 // TestSmartPushSuccessPaths verifies smartPush selects a remote when configured
-// via upstream, branch.pushRemote, remote.pushDefault, or when there's only one remote.
+// via upstream, branch.pushRemote, or when there's only one remote.
 func TestSmartPushSuccessPaths(t *testing.T) {
 	repo := initRepo(t)
 	origin := initBareRemote(t)
@@ -1897,13 +1898,6 @@ func TestSmartPushSuccessPaths(t *testing.T) {
 
 	gitCmd(t, repo, "branch", "--unset-upstream")
 	gitCmd(t, repo, "config", "--local", "--unset-all", "branch.main.pushRemote")
-	gitCmd(t, repo, "config", "--local", "remote.pushDefault", "origin")
-	if err := smartPush(ctx); err != nil {
-		t.Fatalf("smartPush (remote.pushDefault) err=%v", err)
-	}
-
-	gitCmd(t, repo, "branch", "--unset-upstream")
-	gitCmd(t, repo, "config", "--local", "--unset-all", "remote.pushDefault")
 	if err := smartPush(ctx); err != nil {
 		t.Fatalf("smartPush (sole remote) err=%v", err)
 	}

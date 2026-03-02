@@ -43,8 +43,8 @@ and produce a repeatable coverage report.
 - Push behavior (`smartPush`):
   - With upstream: `git push`.
   - Without upstream: `git push -u <remote> <branch>` only when
-    unambiguous (`branch.*.pushRemote`, `remote.pushDefault`, or sole
-    remote); otherwise error with exact commands.
+    unambiguous (`branch.*.pushRemote` or sole remote); otherwise error
+    with a clear message and exact commands.
 
 ## Plan (extend `scripts/mc-test`)
 
@@ -57,7 +57,7 @@ and produce a repeatable coverage report.
   - [x] 010.3.2 Repeat with `-c`; assert an auto-commit is created before the merge and the worktree ends clean.
 - [x] 010.4 Add scenario `smartpush`:
   - [x] 010.4.1 No upstream + single remote: after merge/commit, assert `-u` upstream gets set.
-  - [x] 010.4.2 Add a second remote (e.g. `jj`) and assert `smartPush` errors until `remote.pushDefault` or `branch.<name>.pushRemote` is configured.
+- [x] 010.4.2 Add a second remote (e.g. `jj`) and assert `smartPush` errors until an upstream is set (via `git push -u <remote> <branch>` or `branch.<name>.pushRemote`).
 - [ ] 010.5 Add scenario `multi-remote-fetch`:
   - [x] 010.5.1 With 2 remotes and no upstream, assert discovery fails with a clear “multiple remotes” error.
   - [x] 010.5.2 With upstream set, assert discovery proceeds.

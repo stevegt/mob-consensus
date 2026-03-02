@@ -373,7 +373,8 @@ func registryRemoteURL(id string) (string, error) {
 }
 
 // ensurePushRemote picks (or creates) a push remote for the current user and
-// sets git config so pushes are unambiguous. It returns the chosen remote.
+// returns the chosen remote. It does not write git config; pushes set upstream
+// implicitly via `git push -u`.
 //
 // Selection order:
 //  1. if only one remote exists, use it
@@ -416,19 +417,7 @@ func ensurePushRemote(ctx context.Context, user string) (string, error) {
 	}
 
 	sort.Strings(remotes)
-	return "", fmt.Errorf("mob-consensus: cannot determine your push remote; add/rename a remote to %q or set remote.pushDefault (available: %s)", user, strings.Join(remotes, ", "))
-}
-
-// configurePushRemote writes git config so pushes are unambiguous for the given
-// branch, using the chosen push remote.
-func configurePushRemote(ctx context.Context, pushRemote, branch string) error {
-	if pushRemote == "" || branch == "" {
-		return errors.New("mob-consensus: push remote or branch is empty")
-	}
-	if err := gitRun(ctx, "config", "--local", "remote.pushDefault", pushRemote); err != nil {
-		return err
-	}
-	return gitRun(ctx, "config", "--local", "branch."+branch+".pushRemote", pushRemote)
+	return "", fmt.Errorf("mob-consensus: cannot determine your push remote; add/rename a remote to %q (available: %s)", user, strings.Join(remotes, ", "))
 }
 
 // fetchSuggestedRemote updates remotes so subsequent operations see fresh refs.
@@ -919,9 +908,6 @@ func runStart(ctx context.Context, opts options, user, currentBranch string, std
 		if err != nil {
 			return err
 		}
-		if err := configurePushRemote(ctx, pushRemote, userBranch); err != nil {
-			return err
-		}
 	}
 
 	title := fmt.Sprintf("mob-consensus start (twig=%s, base=%s, remote=%s, user=%s)", twig, base, remote, user)
@@ -1043,9 +1029,6 @@ func runJoin(ctx context.Context, opts options, user, currentBranch string, stdo
 	if !opts.plan && !opts.dryRun {
 		pushRemote, err = ensurePushRemote(ctx, user)
 		if err != nil {
-			return err
-		}
-		if err := configurePushRemote(ctx, pushRemote, userBranch); err != nil {
 			return err
 		}
 	}
@@ -1394,9 +1377,8 @@ func ensureClean(ctx context.Context, opts options, requireClean bool, stdout io
 //
 // If an upstream is already configured, it runs `git push`. Otherwise it will
 // set an upstream with `git push -u <remote> <branch>` only when the remote is
-// unambiguous (branch.<name>.pushRemote, remote.pushDefault, or a sole remote).
-// If the remote choice is ambiguous it returns a clear error with exact
-// commands the user can run.
+// unambiguous (branch.<name>.pushRemote or a sole remote). If the remote choice
+// is ambiguous it returns a clear error with exact commands the user can run.
 func smartPush(ctx context.Context) error {
 	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
@@ -1406,28 +1388,19 @@ func smartPush(ctx context.Context) error {
 		return errors.New("mob-consensus: cannot push from detached HEAD")
 	}
 
+	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err == nil && upstream != "" && upstream != "HEAD" {
+		return gitRun(ctx, "push")
+	}
+
 	branchPushRemote, err := gitOutputTrimmed(ctx, "config", "--get", "branch."+currentBranch+".pushRemote")
 	if err == nil && branchPushRemote != "" {
 		return gitRun(ctx, "push", "-u", branchPushRemote, currentBranch)
 	}
 
-	pushDefault, err := gitOutputTrimmed(ctx, "config", "--get", "remote.pushDefault")
-	if err == nil && pushDefault != "" {
-		return gitRun(ctx, "push", "-u", pushDefault, currentBranch)
-	}
-
-	remotesOut, err := gitOutputTrimmed(ctx, "remote")
+	remotes, err := listRemotes(ctx)
 	if err != nil {
 		return fmt.Errorf("mob-consensus: cannot list git remotes: %w", err)
-	}
-
-	var remotes []string
-	for _, line := range strings.Split(remotesOut, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		remotes = append(remotes, line)
 	}
 
 	if len(remotes) == 0 {
@@ -1439,7 +1412,7 @@ func smartPush(ctx context.Context) error {
 
 	sort.Strings(remotes)
 	return fmt.Errorf(
-		"mob-consensus: cannot push: no push remote is configured for branch %q and multiple remotes exist: %s (hint: git config --local remote.pushDefault <remote>; or: git config --local branch.%s.pushRemote <remote>)",
+		"mob-consensus: cannot push: no upstream configured for %q and multiple remotes exist: %s (hint: git push -u <remote> %s)",
 		currentBranch,
 		strings.Join(remotes, ", "),
 		currentBranch,

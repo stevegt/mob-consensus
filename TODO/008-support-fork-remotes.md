@@ -44,8 +44,8 @@ Gaps:
 
 - Peer-to-peer is the default: users fetch from many remotes but push
   only to their own remote.
-- Push remote must be explicitly configured (prefer `branch.<name>.pushRemote`
-  or `remote.pushDefault`). Do not push to an upstream remote.
+- Push remote must be explicitly configured (via `git push -u <your-remote> <branch>`
+  or `branch.<name>.pushRemote`). Do not push to a collaborator's remote.
 
 ## Repo-tracked collaborator configuration
 
@@ -148,7 +148,6 @@ or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
     (`git fetch --all`) for multi-remote discovery/merge.
   - [ ] 008.1.2 Define a push-remote selection policy that is safe for peer-to-peer:
     - prefer `branch.<name>.pushRemote`
-    - else `remote.pushDefault`
     - else error (do not guess; do not use upstream)
   - [ ] 008.1.3 Clarify flag semantics for multi-remote:
     - `--remote` (if kept) should be fetch-only.
@@ -175,7 +174,6 @@ or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
 - [ ] 008.4 Make push behavior fork-friendly.
   - [ ] 008.4.1 Determine a “push remote” using only explicit configuration:
     - prefer `branch.<name>.pushRemote`
-    - else `remote.pushDefault`
     - else error (do not guess; do not use upstream)
   - [ ] 008.4.2 Always push explicitly to the push remote (avoid bare
     `git push` which can target a collaborator remote via upstream).
@@ -185,7 +183,7 @@ or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
   - [ ] 008.5.1 Add a short “peer-to-peer” section to `README.md` explaining:
     fetch from collaborators, push only to your remote, converge by repeated merge cycles.
   - [ ] 008.5.2 Update `usage.tmpl` and examples to stop implying a single shared writable remote.
-  - [ ] 008.5.3 Explain how to configure push remote (example: `git config --local remote.pushDefault <your-remote>`).
+  - [ ] 008.5.3 Explain how to configure push remote (example: `git push -u <your-remote> <branch>` or `git config --local branch.<branch>.pushRemote <your-remote>`).
   - [ ] 008.5.4 Ensure examples don’t assume `origin`.
 - [ ] 008.6 Testing
   - [ ] 008.6.1 Extend TODO 002 harness to add multiple remotes.

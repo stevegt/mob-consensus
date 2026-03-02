@@ -639,10 +639,9 @@ scenario_smartpush() {
   run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig"
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
 
-  # Case 2: multiple remotes, no upstream, no pushDefault -> smartPush should error.
+  # Case 2: multiple remotes, no upstream -> smartPush should error.
   run git -C "$leader_repo" remote add jj "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
-  git -C "$leader_repo" config --local --unset remote.pushDefault 2>/dev/null || true
   git -C "$leader_repo" config --local --unset "branch.$leader/$twig.pushRemote" 2>/dev/null || true
 
   run git -C "$other_repo" switch "$other/$twig"
@@ -659,9 +658,8 @@ scenario_smartpush() {
   assert_contains "$out" "multiple remotes"
   assert_contains "$out" "git push -u <remote>"
 
-  # Fix: configure remote.pushDefault and ensure the next merge pushes successfully.
-  run git -C "$leader_repo" config --local remote.pushDefault origin
-  run_maybe git -C "$leader_repo" branch --unset-upstream
+  # Fix: set upstream by pushing explicitly, then ensure the next merge pushes successfully.
+  run git -C "$leader_repo" push -u origin "$leader/$twig"
 
   run git -C "$other_repo" switch "$other/$twig"
   echo "smartpush case2b ($other)" >"$other_repo/smartpush/case2b.txt"
@@ -671,8 +669,6 @@ scenario_smartpush() {
 
   run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig"
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
-
-  run_maybe git -C "$leader_repo" config --local --unset remote.pushDefault
   run git -C "$leader_repo" remote remove jj
 }
 
@@ -683,23 +679,21 @@ scenario_multiremote_fetch() {
   leader="$(awk '{print $1}' <<<"$users")"
   local leader_repo="$root/$leader"
 
-  echo "$prog: multiremote-fetch (fetch selection + ambiguity errors)" >&2
+  echo "$prog: multiremote-fetch (fetch selection with multiple remotes)" >&2
 
   run git -C "$leader_repo" switch "$leader/$twig"
   run_maybe git -C "$leader_repo" remote remove jj
   run git -C "$leader_repo" remote add jj "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
 
+  # With multiple remotes and no upstream, status should still work because we fetch all.
   local out
-  if out="$( (cd "$leader_repo" && "$mc_bin" status) 2>&1 )"; then
-    die "expected discovery to fail with multiple remotes and no upstream"
-  fi
-  assert_contains "$out" "multiple remotes"
-
-  run git -C "$leader_repo" fetch origin
-  run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
   out="$( (cd "$leader_repo" && "$mc_bin" status) 2>&1 )"
   assert_contains "$out" "Related branches and their diffs"
+
+  # Restore a sane upstream for later scenarios.
+  run git -C "$leader_repo" fetch origin
+  run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
 
   run git -C "$leader_repo" remote remove jj
 }

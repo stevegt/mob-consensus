@@ -229,21 +229,13 @@ func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
 			}
 
 			baseRef := strings.TrimSpace(fromRef)
-			derivedBase := baseRef == ""
-			if derivedBase {
+			if baseRef == "" {
 				baseRef = currentBranch
 			}
 			if baseRef == "" {
 				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
 			}
-			// If the repo is in detached HEAD and the user did not explicitly provide
-			// a base, require an explicit `--from` to avoid branching from an
-			// unexpected commit. If the user *did* pass `--from HEAD`, allow it:
-			// `git checkout -b <branch> HEAD` is a valid way to branch from the
-			// current commit even in detached HEAD.
-			if derivedBase && baseRef == "HEAD" {
-				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
-			}
+			// Allow HEAD so detached-head users can branch from the current commit.
 
 			user, err := branchUserFromEmail(cmd.Context())
 			if err != nil {
