@@ -569,6 +569,70 @@ func TestRunCreateBranchViaRun(t *testing.T) {
 	}
 }
 
+// TestRunCreateBranchDetachedHeadRequiresExplicitFrom verifies `branch create`
+// refuses to branch from a detached HEAD by default and guides the user to pass
+// an explicit `--from` ref. This intentionally uses `git checkout <sha>` to
+// enter detached HEAD because that command is widely supported across older git
+// versions used in CI environments.
+func TestRunCreateBranchDetachedHeadRequiresExplicitFrom(t *testing.T) {
+	repo := initRepo(t)
+	withCwd(t, repo)
+
+	head := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "HEAD"))
+	gitCmd(t, repo, "checkout", head)
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "HEAD" {
+		t.Fatalf("expected detached HEAD, got %q", got)
+	}
+
+	var out bytes.Buffer
+	err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "detached HEAD") {
+		t.Fatalf("expected detached-HEAD guidance error, got err=%v", err)
+	}
+
+	// Explicit branch base is allowed even while currently detached.
+	out.Reset()
+	if err := run(context.Background(), []string{"branch", "create", "feature-x", "--from", "main"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(branch create --from main) err=%v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+	}
+}
+
+// TestRunCreateBranchDetachedHeadSwitchesExistingBranch ensures detached HEAD
+// still allows the idempotent branch-switch path when the personal branch
+// already exists locally.
+func TestRunCreateBranchDetachedHeadSwitchesExistingBranch(t *testing.T) {
+	repo := initRepo(t)
+	gitSwitchCreate(t, repo, "feature-x")
+	withCwd(t, repo)
+
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard); err != nil {
+		t.Fatalf("initial run(branch create) err=%v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+	}
+
+	// Detach HEAD, then re-run the same command. This should switch back to the
+	// existing personal branch instead of requiring an explicit --from.
+	head := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "HEAD"))
+	gitCmd(t, repo, "checkout", head)
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "HEAD" {
+		t.Fatalf("expected detached HEAD, got %q", got)
+	}
+
+	out.Reset()
+	if err := run(context.Background(), []string{"branch", "create", "feature-x"}, &out, io.Discard); err != nil {
+		t.Fatalf("run(branch create) from detached HEAD should switch existing branch, err=%v\n%s", err, out.String())
+	}
+	if got := strings.TrimSpace(gitCmd(t, repo, "rev-parse", "--abbrev-ref", "HEAD")); got != "alice/feature-x" {
+		t.Fatalf("current branch=%q, want %q", got, "alice/feature-x")
+	}
+}
+
 // TestRunStartOnboardingFlow exercises the "first group member" happy path:
 // create/push the shared twig, create the personal branch, and push it.
 func TestRunStartOnboardingFlow(t *testing.T) {

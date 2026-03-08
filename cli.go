@@ -207,8 +207,14 @@ func newBranchCmd(noPush, commitDirty *bool) *cobra.Command {
 //
 // The created personal branch name is derived from `git config user.email`.
 // The base ref is either:
-//   - the explicit --from ref (which may be "HEAD"), or
+//   - the explicit --from ref, or
 //   - the current branch name (when not detached).
+//
+// Detached-HEAD safety:
+//   - If HEAD is detached and --from is omitted, the command refuses to run and
+//     asks for an explicit base ref.
+//   - If HEAD is detached and --from=HEAD, the command also refuses because that
+//     still branches from a detached ref. Users must pass a concrete branch/tag/SHA.
 func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
 	var fromRef string
 	cmd := &cobra.Command{
@@ -228,18 +234,39 @@ func newBranchCreateCmd(noPush, commitDirty *bool) *cobra.Command {
 				return err
 			}
 
+			user, err := branchUserFromEmail(cmd.Context())
+			if err != nil {
+				return err
+			}
+
+			userBranch := user + "/" + twig
 			baseRef := strings.TrimSpace(fromRef)
-			if baseRef == "" {
+			hasExplicitFrom := baseRef != ""
+			if currentBranch == "HEAD" {
+				// Preserve idempotent behavior: if the personal branch already exists,
+				// `branch create` should still switch to it even from detached HEAD.
+				exists, err := localBranchExists(cmd.Context(), userBranch)
+				if err != nil {
+					return err
+				}
+				if !hasExplicitFrom {
+					if !exists {
+						return usageError{Err: errors.New("mob-consensus: cannot create branch from detached HEAD (hint: switch to a branch, or pass --from <ref>)")}
+					}
+					// baseRef is ignored by runCreateBranch when target branch exists,
+					// but it must be non-empty to satisfy base validation.
+					baseRef = "HEAD"
+					hasExplicitFrom = true
+				}
+				if baseRef == "HEAD" && !exists {
+					return usageError{Err: errors.New("mob-consensus: --from HEAD is not allowed while detached (hint: pass a branch/tag/SHA ref)")}
+				}
+			}
+			if !hasExplicitFrom {
 				baseRef = currentBranch
 			}
 			if baseRef == "" {
 				return usageError{Err: errors.New("mob-consensus: could not determine a base ref (hint: pass --from <ref>)")}
-			}
-			// Allow HEAD so detached-head users can branch from the current commit.
-
-			user, err := branchUserFromEmail(cmd.Context())
-			if err != nil {
-				return err
 			}
 
 			opts := options{
