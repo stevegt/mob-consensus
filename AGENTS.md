@@ -19,6 +19,51 @@ Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaultin
 - Go: run `gofmt`; keep package names short and lower-case. Minimum supported Go is 1.24.0 (see `go.mod`).
 - Always add detailed comments to code.
 
+## Comment Preservation Protocol (Required)
+- Never remove existing code comments unless they are replaced in the same patch by equal-or-better explanatory comments near the same logic.
+- When rewriting or refactoring code, port old explanatory intent first, then improve wording.
+- If a touched non-trivial code block has no comments, add explanatory comments.
+- Do not treat shorter comments as better unless they preserve all important intent.
+- For any non-trivial behavior change, include a behavior-level comment with:
+  - `Intent:` a short, clear rationale (a sentence or a few; no hard cap if more is needed for clarity).
+  - `Source:` a DI ID in the format `DI-NNN-YYYYMMDD-HHMMSS`.
+  - `NNN` is the TODO number of the TODO file where that DI entry resides.
+  - Optional: TODO file/section reference for faster lookup.
+- If a comment must be dropped with no replacement, stop and ask the user before proceeding.
+- Before editing a file, review existing comments in that file.
+- Maintain a `## Decision Intent Log` at the top of relevant `TODO/*.md` files.
+- Treat DI logs as append-only history. Do not rewrite or delete prior entries.
+- When intent evolves, add a new DI entry and set `Supersedes: <old-di-id>`.
+- DI entries must include:
+  - `ID: DI-NNN-YYYYMMDD-HHMMSS`
+  - `Date: YYYY-MM-DD HH:MM:SS`
+  - `Status: active|superseded`
+  - `Decision:`
+  - `Intent:`
+  - `Constraints:`
+  - `Affects:`
+  - `Supersedes:` (optional)
+- After editing, run a comment-delta audit on each touched code file using: `git diff -U0 -- <file> | rg -n '^-\\s*//|^-\\s*/\\*|^\\+\\s*//|^\\+\\s*/\\*'`.
+- Resolve all removed-comment lines before finalizing unless explicit user approval was given.
+- In the final response, include:
+  - `Comment audit: PASS/FAIL`, with file list.
+  - `Intent provenance audit: PASS/FAIL`, listing files with behavior changes and DI sources.
+- Hard gate: behavior-changing work is incomplete unless comments preserve intent and include DI provenance.
+- Do not remove comments or documentation; update them if outdated or incorrect.
+
+### Comment + DI Examples
+- Comment format example:
+  - `// Intent: Keep per-client rotation state stable across reconnects to avoid cross-client session churn. Source: DI-016-20260309-093000`
+- Decision Intent Log entry template (for TODO files):
+  - `ID: DI-NNN-YYYYMMDD-HHMMSS`
+  - `Date: YYYY-MM-DD HH:MM:SS`
+  - `Status: active`
+  - `Decision: <what was decided>`
+  - `Intent: <short clear rationale>`
+  - `Constraints: <hard limits, dependencies, assumptions>`
+  - `Affects: <paths, modules, commands, docs>`
+  - `Supersedes: <old DI ID, optional>`
+
 ## Testing Guidelines
 - Prefer deterministic tests using Go’s standard `testing` package when adding Go code.
 - When tests interact with Git workflows, keep them as realistic as possible by using the same commands shown in the `mob-consensus` help (`usage.tmpl`) where practical (e.g., `git switch -c`, `git fetch`, `git push -u`). If a test must deviate (compatibility, determinism, or focus), explain why in the test code comments.

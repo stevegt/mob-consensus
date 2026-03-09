@@ -8,8 +8,9 @@ repo after forking. We need clearer detection and guided fixes.
   - [x] 018.1.1 In `branch create`, detect `HEAD` base when current branch is
         detached; abort with a friendly message and instructions to switch to a
         real branch or pass `--from <ref>` explicitly.
-  - [ ] 018.1.2 Add tests (Go + mc-test) covering detached HEAD rejection.
-        Note: Go integration coverage is now added; mc-test scenario still pending.
+  - [x] 018.1.2 Add tests (Go + mc-test) covering detached HEAD rejection.
+        Note: Added `mc-test` scenario `detached-branch` to cover rejection,
+        idempotent existing-branch switch, and explicit `--from` recovery.
 
 - [ ] 018.2 Detect push permission errors on cloned upstream
   - [ ] 018.2.1 When `git push` fails with permission/denied, detect the common

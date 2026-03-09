@@ -18,7 +18,7 @@ Commands:
   init     Configure repo-local git identity for a simulated user.
   harness  Create a local bare "remote", seed it, build mob-consensus, and clone N users.
   run      Run one scenario in an existing harness.
-  all      Run harness + scenarios (bootstrap, join, discovery, merge, plus deeper checks).
+  all      Run harness + scenarios (bootstrap, join, discovery, merge, detached-head branch checks, plus deeper checks).
   coverage Write coverage reports under the harness root (coverage.out, coverage.html, coverage.func.txt, coverage.total.txt, coverage.zero.txt, coverage.low.txt).
 
 Scenarios:
@@ -27,6 +27,7 @@ Scenarios:
   discovery  Create commits and assert ahead/behind/diverged output.
   merge      Run a clean merge and then a no-op merge (with confirmation).
   branch     Exercise `branch create` idempotency and push advice.
+  detached-branch  Exercise detached-HEAD behavior for `branch create`.
   dirty      Exercise dirty-tree failures and `-c` auto-commit flow.
   smartpush  Exercise upstreamless push behavior (single vs multiple remotes).
   multiremote-fetch  Exercise fetch selection and ambiguity errors.
@@ -552,6 +553,42 @@ scenario_branch() {
   run git -C "$leader_repo" remote remove jj
 }
 
+scenario_detached_branch() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+  local leader_repo="$root/$leader"
+  local missing_twig="$twig-detached-new"
+
+  echo "$prog: detached-branch (branch create detached-HEAD behavior)" >&2
+
+  run git -C "$leader_repo" switch "$leader/$twig"
+
+  # Detached HEAD + missing personal branch should fail unless an explicit
+  # --from ref is provided.
+  local head_sha
+  head_sha="$(git -C "$leader_repo" rev-parse HEAD)"
+  run git -C "$leader_repo" checkout "$head_sha"
+
+  local out
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$missing_twig" 2>&1)"; then
+    die "expected branch create to fail for detached HEAD without --from when branch is missing"
+  fi
+  assert_contains "$out" "detached HEAD"
+
+  # Detached HEAD + existing personal branch should still be idempotent and
+  # switch to the existing branch.
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig"
+  assert_branch "$leader_repo" "$leader/$twig"
+
+  # Detached HEAD + explicit --from should allow creating a new personal branch.
+  head_sha="$(git -C "$leader_repo" rev-parse HEAD)"
+  run git -C "$leader_repo" checkout "$head_sha"
+  run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$missing_twig" --from "$base"
+  assert_branch "$leader_repo" "$leader/$missing_twig"
+}
+
 scenario_dirty() {
   local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
   local mc_bin="$root/mob-consensus"
@@ -931,6 +968,7 @@ cmd_run() {
       scenario_discovery "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_merge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_detached_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_dirty "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_smartpush "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_multiremote_fetch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
@@ -950,6 +988,9 @@ cmd_run() {
       ;;
     branch)
       scenario_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    detached-branch)
+      scenario_detached_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       ;;
     dirty)
       scenario_dirty "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
