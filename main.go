@@ -1390,12 +1390,12 @@ func smartPush(ctx context.Context) error {
 
 	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
 	if err == nil && upstream != "" && upstream != "HEAD" {
-		return gitRun(ctx, "push")
+		return gitPushWithGuidance(ctx, currentBranch, "push")
 	}
 
 	branchPushRemote, err := gitOutputTrimmed(ctx, "config", "--get", "branch."+currentBranch+".pushRemote")
 	if err == nil && branchPushRemote != "" {
-		return gitRun(ctx, "push", "-u", branchPushRemote, currentBranch)
+		return gitPushWithGuidance(ctx, currentBranch, "push", "-u", branchPushRemote, currentBranch)
 	}
 
 	remotes, err := listRemotes(ctx)
@@ -1407,7 +1407,7 @@ func smartPush(ctx context.Context) error {
 		return errors.New("mob-consensus: cannot push: no git remotes configured (hint: git remote -v)")
 	}
 	if len(remotes) == 1 {
-		return gitRun(ctx, "push", "-u", remotes[0], currentBranch)
+		return gitPushWithGuidance(ctx, currentBranch, "push", "-u", remotes[0], currentBranch)
 	}
 
 	sort.Strings(remotes)
@@ -1417,6 +1417,97 @@ func smartPush(ctx context.Context) error {
 		strings.Join(remotes, ", "),
 		currentBranch,
 	)
+}
+
+// gitPushWithGuidance runs a push command and upgrades permission/auth failures
+// to a workflow-specific remediation message.
+//
+// Intent: Convert raw git push permission/auth failures into actionable
+// "use your fork remote + git push -u" guidance for collaborators who cloned an
+// upstream they cannot write to. Source: DI-018-20260309-174820
+func gitPushWithGuidance(ctx context.Context, currentBranch string, args ...string) error {
+	output, stderrText, err := gitRunWithOutput(ctx, args...)
+	if err == nil {
+		return nil
+	}
+
+	if isPushPermissionError(output + "\n" + stderrText + "\n" + err.Error()) {
+		return pushPermissionGuidanceError(ctx, currentBranch, stderrText)
+	}
+	return err
+}
+
+// isPushPermissionError heuristically matches common git push auth/write-denied
+// diagnostics across HTTPS and SSH transports.
+func isPushPermissionError(text string) bool {
+	lower := strings.ToLower(text)
+	patterns := []string{
+		"permission denied",
+		"write access to repository not granted",
+		"could not read from remote repository",
+		"requested url returned error: 403",
+		"requested url returned error: 401",
+		"authentication failed",
+		"access denied",
+		"denied to",
+		"remote rejected",
+	}
+	for _, pattern := range patterns {
+		if strings.Contains(lower, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// pushPermissionGuidanceError renders a concise recovery path for users who are
+// attempting to push to a remote they likely cannot write.
+//
+// Intent: Keep the failure actionable by showing both shared-write remediation
+// and fork remediation, because local state cannot reliably distinguish which
+// workflow the user intended. Include exact git stderr for debugging context.
+// Source: DI-018-20260312-185440
+func pushPermissionGuidanceError(ctx context.Context, currentBranch, stderrText string) error {
+	remotes, err := listRemotes(ctx)
+	if err != nil {
+		remotes = nil
+	}
+	sort.Strings(remotes)
+
+	sharedWriteRemote := "<remote>"
+	if len(remotes) == 1 {
+		sharedWriteRemote = remotes[0]
+	}
+
+	suggestedRemote := "<my-remote>"
+	user, userErr := branchUserFromEmail(ctx)
+	if userErr == nil {
+		for _, remote := range remotes {
+			if remote == user {
+				suggestedRemote = user
+				break
+			}
+		}
+	}
+
+	var builder strings.Builder
+	builder.WriteString("mob-consensus: push failed due to remote permissions/authentication.\n")
+	builder.WriteString("Possible causes: missing write access on a shared repo, or pushing to another collaborator's remote instead of your fork.\n")
+	if len(remotes) > 0 {
+		fmt.Fprintf(&builder, "Configured remotes: %s\n", strings.Join(remotes, ", "))
+	}
+	builder.WriteString("Fix:\n")
+	builder.WriteString("  Shared-write repo path:\n")
+	fmt.Fprintf(&builder, "    - verify auth/write access, then retry: git push -u %s %s\n", sharedWriteRemote, currentBranch)
+	builder.WriteString("  Fork workflow path:\n")
+	builder.WriteString("    - add your fork remote if needed: git remote add <my-remote> <fork-url>\n")
+	fmt.Fprintf(&builder, "    - push and set upstream: git push -u %s %s\n", suggestedRemote, currentBranch)
+	builder.WriteString("  Retry mob-consensus after either path succeeds.\n")
+	if strings.TrimSpace(stderrText) != "" {
+		builder.WriteString("\nGit stderr (exact):\n")
+		builder.WriteString(strings.TrimRight(stderrText, "\n"))
+	}
+	return errors.New(strings.TrimSpace(builder.String()))
 }
 
 // resolveMergeTarget resolves a user-supplied merge target.
@@ -1615,4 +1706,28 @@ func gitRun(ctx context.Context, args ...string) error {
 		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
 	return nil
+}
+
+// gitRunWithOutput runs `git <args...>`, streams output to the current stdio,
+// and returns combined output plus exact stderr text for diagnostics.
+func gitRunWithOutput(ctx context.Context, args ...string) (string, string, error) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = io.MultiWriter(os.Stdout, &stdout)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+	err := cmd.Run()
+
+	combined := strings.TrimSpace(stdout.String() + "\n" + stderr.String())
+	stderrText := stderr.String()
+	if err != nil {
+		msg := strings.TrimSpace(stderrText)
+		if msg != "" {
+			return combined, stderrText, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, msg)
+		}
+		return combined, stderrText, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	return combined, stderrText, nil
 }

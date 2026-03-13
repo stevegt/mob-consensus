@@ -1537,6 +1537,60 @@ func TestSmartPushErrors(t *testing.T) {
 	}
 }
 
+// TestSmartPushPermissionDeniedGuidance ensures push permission failures are
+// translated into actionable remediation guidance for fork-based workflows.
+func TestSmartPushPermissionDeniedGuidance(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	// Use a rejecting pre-receive hook to deterministically simulate a remote
+	// that the current user cannot push to.
+	hookPath := filepath.Join(origin, "hooks", "pre-receive")
+	hookScript := `#!/usr/bin/env bash
+set -euo pipefail
+echo "remote: write access to repository not granted" >&2
+exit 1
+`
+	if err := os.WriteFile(hookPath, []byte(hookScript), 0o755); err != nil {
+		t.Fatalf("write pre-receive hook: %v", err)
+	}
+
+	writeFile(t, repo, "denied.txt", "push denied\n")
+	gitCmd(t, repo, "add", "denied.txt")
+	gitCmd(t, repo, "commit", "-m", "trigger denied push")
+
+	err := smartPush(context.Background())
+	if err == nil {
+		t.Fatalf("expected smartPush to fail with permission guidance")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "permissions/authentication") {
+		t.Fatalf("expected permission guidance, got: %v", err)
+	}
+	if !strings.Contains(got, "Shared-write repo path") {
+		t.Fatalf("expected shared-write guidance, got: %v", err)
+	}
+	if !strings.Contains(got, "Fork workflow path") {
+		t.Fatalf("expected fork-workflow guidance, got: %v", err)
+	}
+	if !strings.Contains(got, "git push -u") {
+		t.Fatalf("expected push command guidance, got: %v", err)
+	}
+	if !strings.Contains(got, "Possible causes") {
+		t.Fatalf("expected causes explanation, got: %v", err)
+	}
+	if !strings.Contains(got, "Git stderr (exact):") {
+		t.Fatalf("expected exact stderr section, got: %v", err)
+	}
+	if !strings.Contains(got, "write access to repository not granted") {
+		t.Fatalf("expected exact stderr details, got: %v", err)
+	}
+}
+
 // TestResolveMergeTargetLocalAndMissing verifies resolveMergeTarget accepts a
 // local ref without confirmation and returns a friendly error for missing refs.
 func TestResolveMergeTargetLocalAndMissing(t *testing.T) {

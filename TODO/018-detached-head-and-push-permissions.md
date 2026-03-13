@@ -4,6 +4,34 @@ Context: Users sometimes work in detached HEAD state or clone someone else’s
 repo, then try to push without permission or accidentally push to the original
 repo after forking. We need clearer detection and guided fixes.
 
+## Decision Intent Log
+
+ID: DI-018-20260309-174820
+Date: 2026-03-09 17:48:20
+Status: active
+Decision: Detect push permission/auth failures in `smartPush` and return guided fork-remediation instructions instead of raw git failure text.
+Intent: Keep collaborator workflows unblocked when a user clones a repo they cannot write to by providing concrete next-step commands.
+Constraints: Preserve existing push policy (upstream > branch.pushRemote > sole remote), keep analysis read-only beyond runtime behavior, and avoid changing unrelated merge/status semantics.
+Affects: `main.go` (`smartPush`, git push error handling), `main_integration_test.go` (permission-denied push coverage), TODO 018 tracking.
+
+ID: DI-018-20260309-175205
+Date: 2026-03-09 17:52:05
+Status: active
+Decision: On push permission/auth failure, present guidance for both shared-write and fork workflows instead of assuming fork-only remediation.
+Intent: Avoid incorrect assumptions in mixed collaboration models where local state cannot reliably determine whether the repository is shared-write or fork-based.
+Constraints: Keep `smartPush` policy unchanged, keep remediation commands concise, and preserve deterministic integration coverage for denied push behavior.
+Affects: `main.go` (`pushPermissionGuidanceError` messaging), `main_integration_test.go` (`TestSmartPushPermissionDeniedGuidance` assertions), TODO 018 decision trail.
+Supersedes: DI-018-20260309-174820
+
+ID: DI-018-20260312-185440
+Date: 2026-03-12 18:54:40
+Status: active
+Decision: Include exact captured git stderr in push permission/auth guidance errors, in addition to remediation steps.
+Intent: Preserve low-level debugging evidence while still providing high-level workflow guidance for shared-write and fork cases.
+Constraints: Keep existing `smartPush` decision policy unchanged and avoid masking non-permission failures.
+Affects: `main.go` (`gitRunWithOutput`, `gitPushWithGuidance`, `pushPermissionGuidanceError`), `main_integration_test.go` (`TestSmartPushPermissionDeniedGuidance`), TODO 018 decision log.
+Supersedes: DI-018-20260309-175205
+
 - [ ] 018.1 Prevent branch creation from detached HEAD
   - [x] 018.1.1 In `branch create`, detect `HEAD` base when current branch is
         detached; abort with a friendly message and instructions to switch to a
@@ -13,11 +41,11 @@ repo after forking. We need clearer detection and guided fixes.
         idempotent existing-branch switch, and explicit `--from` recovery.
 
 - [ ] 018.2 Detect push permission errors on cloned upstream
-  - [ ] 018.2.1 When `git push` fails with permission/denied, detect the common
+  - [x] 018.2.1 When `git push` fails with permission/denied, detect the common
         case of pushing to someone else’s repo (no write access).
-  - [ ] 018.2.2 Present a guided fix: add user’s own remote, set upstream via
+  - [x] 018.2.2 Present a guided fix: add user’s own remote, set upstream via
         `git push -u <my-remote> <branch>`, retry push.
-  - [ ] 018.2.3 Add tests simulating no-push permission (e.g., remote rejecting
+  - [x] 018.2.3 Add tests simulating no-push permission (e.g., remote rejecting
         pushes) to ensure the guidance appears and the exit code is non-zero.
 
 - [ ] 018.3 Detect “cloned upstream then forked” pushing to wrong remote

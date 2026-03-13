@@ -76,8 +76,15 @@ Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaultin
 
 ## Commit & Pull Request Guidelines
 - Keep commit messages short and imperative; existing history often uses a `mob-consensus:` prefix for script changes.
-- PRs should include: a concise summary, test commands run (e.g., `bash -n x/mob-consensus`), and before/after notes for behavior or output changes.
+- PRs should include a concise summary, test commands run (e.g., `bash -n x/mob-consensus`), and before/after notes for behavior or output changes.
 - When staging, list files explicitly (avoid `git add .` / `git add -A`).
+- Derive commit message content from `git diff` (not only from chat context).
+
+## Commit Messages
+- Subject: short, imperative, capitalized (e.g., "Refactor chat client", "Fix WS path").
+- Body: include a section per changed file with bullet points summarizing the edits.
+- Use a here-doc (`git commit -F -`) for multi-line bodies; do not use multiple `-m` flags.
+- Keep messages readable (avoid literal `\n` escapes); base content on the actual diff.
 
 ## Agent-Specific Notes
 - Check `~/.codex/AGENTS.md` for updated local workflows and keep `~/.codex/meta-context.md` current.
