@@ -7,6 +7,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 015 - Cleaner interfaces for CLI, TUI, and Go API (`TODO/015-cli-tui-api-interfaces.md`)
 - [ ] 017 - Check git difftool/mergetool config + assist setup (`TODO/017-check-difftool-mergetool-config.md`)
 - [ ] 018 - Guard detached HEAD branching & push-permission guidance (`TODO/018-detached-head-and-push-permissions.md`)
+- [ ] 020 - Recover `jj/main` work onto `stevegt/main` with decision-first reconciliation (`TODO/020-recover-jj-main-into-stevegt-main.md`)
 - [x] 004 - Per-repo test user init script (`TODO/004-per-repo-test-user-script.md`)
 - [ ] 010 - Extend mc-test for deeper system coverage (`TODO/010-extend-mc-test.md`)
 - [ ] 011 - Improve merge-conflict review UX (`TODO/011-merge-conflict-review-ux.md`)
