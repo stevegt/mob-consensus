@@ -21,6 +21,18 @@ Constraints: Do not rename/move/delete `jj/main`; do not apply or drop
 Affects: `recover/jj-main-wip` branch, `recover/stevegt-main-reconcile` branch,
 `TODO/020-recover-jj-main-into-stevegt-main.md`, `TODO/TODO.md`.
 
+ID: DI-020-20260326-205942
+Date: 2026-03-26 20:59:42
+Status: active
+Decision: Pause stash reconciliation implementation until TODO 021 branch-setup
+bakeoff completes and a winning command model is locked.
+Intent: Avoid repeated churn in `main.go`, `cli.go`, tests, and docs by
+finalizing branch-link/push behavior first.
+Constraints: Implementation remains blocked until TODO 021.6 is complete;
+decision-first intake remains required before any resumed edits.
+Affects: `TODO/020-recover-jj-main-into-stevegt-main.md`,
+`TODO/021-branch-setup-bakeoff.md`, TODO 020 implementation sequencing.
+
 - [ ] 020.1 Capture immutable recovery artifacts
   - [x] 020.1.1 Verify branch and stash baseline:
     - `git rev-parse --abbrev-ref HEAD`
@@ -71,3 +83,7 @@ Affects: `recover/jj-main-wip` branch, `recover/stevegt-main-reconcile` branch,
     - `git rev-parse --verify stash@{0}`
   - [ ] 020.5.3 Run Go tests and ask user to run `scripts/mc-test all`.
   - [ ] 020.5.4 Provide Decision Compliance and comment/provenance audits.
+
+- [ ] 020.6 Branch-setup bakeoff gate (TODO 021)
+  - [x] 020.6.1 Pause implementation while bakeoff spec is prepared.
+  - [ ] 020.6.2 Resume only after TODO 021.6 locks winner + rationale.
