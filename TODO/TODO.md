@@ -5,6 +5,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 013 - TUI automation and scraping (`TODO/013-tui-automation-and-scraping.md`)
 - [ ] 014 - Consider Bubble Tea TUI for mob-consensus (`TODO/014-bubbletea-tui.md`)
 - [ ] 015 - Cleaner interfaces for CLI, TUI, and Go API (`TODO/015-cli-tui-api-interfaces.md`)
+- [ ] 022 - Evaluate `git consensus` subcommand architecture (`TODO/022-git-consensus-subcommand.md`)
 - [ ] 021 - Branch setup bakeoff (spec-first, decision-first) (`TODO/021-branch-setup-bakeoff.md`)
 - [ ] 017 - Check git difftool/mergetool config + assist setup (`TODO/017-check-difftool-mergetool-config.md`)
 - [ ] 018 - Guard detached HEAD branching & push-permission guidance (`TODO/018-detached-head-and-push-permissions.md`)
