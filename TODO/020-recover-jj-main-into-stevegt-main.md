@@ -23,7 +23,7 @@ Affects: `recover/jj-main-wip` branch, `recover/stevegt-main-reconcile` branch,
 
 ID: DI-020-20260326-205942
 Date: 2026-03-26 20:59:42
-Status: active
+Status: superseded
 Decision: Pause stash reconciliation implementation until TODO 021 branch-setup
 bakeoff completes and a winning command model is locked.
 Intent: Avoid repeated churn in `main.go`, `cli.go`, tests, and docs by
@@ -32,6 +32,20 @@ Constraints: Implementation remains blocked until TODO 021.6 is complete;
 decision-first intake remains required before any resumed edits.
 Affects: `TODO/020-recover-jj-main-into-stevegt-main.md`,
 `TODO/021-branch-setup-bakeoff.md`, TODO 020 implementation sequencing.
+
+ID: DI-020-20260330-235100
+Date: 2026-03-30 23:51:00
+Status: active
+Decision: Run a narrow stabilization checkpoint from TODO 021 (never push peer
+branches + peer branch hygiene warnings) before resuming the rest of stash/JJ
+reconciliation and then immediately pivot to TODO 012 AI/DF refactor planning.
+Intent: Preserve current WIP on a stable, reviewable baseline and avoid losing
+work while still moving quickly toward AI-assisted merge/review workflows.
+Constraints: Stabilization scope is limited to push ownership and local
+peer-branch warnings; no broad CLI redesign in this checkpoint.
+Affects: `TODO/020-recover-jj-main-into-stevegt-main.md`,
+`TODO/021-branch-setup-bakeoff.md`, `TODO/012-llm-assisted-review-and-approval.md`.
+Supersedes: DI-020-20260326-205942
 
 - [ ] 020.1 Capture immutable recovery artifacts
   - [x] 020.1.1 Verify branch and stash baseline:
@@ -86,4 +100,8 @@ Affects: `TODO/020-recover-jj-main-into-stevegt-main.md`,
 
 - [ ] 020.6 Branch-setup bakeoff gate (TODO 021)
   - [x] 020.6.1 Pause implementation while bakeoff spec is prepared.
-  - [ ] 020.6.2 Resume only after TODO 021.6 locks winner + rationale.
+  - [x] 020.6.2 Resume gate replaced by stabilization checkpoint (DI-020-20260330-235100).
+  - [ ] 020.6.3 Resume reconciliation only after TODO 021.13 stabilization
+        tasks are complete and reviewed.
+  - [ ] 020.6.4 After stabilization commit, open/execute the TODO 012 AI/DF
+        refactor intake before additional branch behavior changes.

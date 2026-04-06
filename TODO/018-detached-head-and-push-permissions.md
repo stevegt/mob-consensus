@@ -8,7 +8,7 @@ repo after forking. We need clearer detection and guided fixes.
 
 ID: DI-018-20260309-174820
 Date: 2026-03-09 17:48:20
-Status: active
+Status: superseded
 Decision: Detect push permission/auth failures in `smartPush` and return guided fork-remediation instructions instead of raw git failure text.
 Intent: Keep collaborator workflows unblocked when a user clones a repo they cannot write to by providing concrete next-step commands.
 Constraints: Preserve existing push policy (upstream > branch.pushRemote > sole remote), keep analysis read-only beyond runtime behavior, and avoid changing unrelated merge/status semantics.
@@ -16,7 +16,7 @@ Affects: `main.go` (`smartPush`, git push error handling), `main_integration_tes
 
 ID: DI-018-20260309-175205
 Date: 2026-03-09 17:52:05
-Status: active
+Status: superseded
 Decision: On push permission/auth failure, present guidance for both shared-write and fork workflows instead of assuming fork-only remediation.
 Intent: Avoid incorrect assumptions in mixed collaboration models where local state cannot reliably determine whether the repository is shared-write or fork-based.
 Constraints: Keep `smartPush` policy unchanged, keep remediation commands concise, and preserve deterministic integration coverage for denied push behavior.
@@ -25,12 +25,26 @@ Supersedes: DI-018-20260309-174820
 
 ID: DI-018-20260312-185440
 Date: 2026-03-12 18:54:40
-Status: active
+Status: superseded
 Decision: Include exact captured git stderr in push permission/auth guidance errors, in addition to remediation steps.
 Intent: Preserve low-level debugging evidence while still providing high-level workflow guidance for shared-write and fork cases.
 Constraints: Keep existing `smartPush` decision policy unchanged and avoid masking non-permission failures.
 Affects: `main.go` (`gitRunWithOutput`, `gitPushWithGuidance`, `pushPermissionGuidanceError`), `main_integration_test.go` (`TestSmartPushPermissionDeniedGuidance`), TODO 018 decision log.
 Supersedes: DI-018-20260309-175205
+
+ID: DI-018-20260330-235100
+Date: 2026-03-30 23:51:00
+Status: active
+Decision: Align push-permission guidance with TODO 021 stabilization:
+`mob-consensus` must never push peer-owned branches; when push is attempted on
+own branch and fails, keep original git stderr and add guided remediation text.
+Intent: Separate ownership policy errors from permission/auth failures and
+avoid misleading guidance when branch ownership is already invalid.
+Constraints: Enforce ownership guard before push attempt; preserve exact stderr
+when push does run and fails; keep guidance concise and workflow-oriented.
+Affects: `main.go` push ownership guard + permission guidance flow,
+`main_integration_test.go`, `scripts/mc-test`, TODO 018/021 tracking.
+Supersedes: DI-018-20260312-185440
 
 - [ ] 018.1 Prevent branch creation from detached HEAD
   - [x] 018.1.1 In `branch create`, detect `HEAD` base when current branch is

@@ -105,3 +105,14 @@ be able to “self-approve” or bypass confirmations.
   - [ ] 012.6.2 Mock/fake LLM calls for deterministic tests.
   - [ ] 012.6.3 Fake `$EDITOR` script for edit-loop tests.
   - [ ] 012.6.4 `mc-test --interactive` scenario exercising the full review loop (optionally with TODO 013 PTY tooling).
+
+## Staged handoff from TODO 021 stabilization
+
+- [ ] 012.7 Capture post-stabilization design intake:
+  - [ ] 012.7.1 Confirm which current merge UX paths (`mergetool`/`difftool`)
+        are retained temporarily vs removed in AI-first mode.
+  - [ ] 012.7.2 Define AI-assisted merge path that preserves ancestry when
+        required (for example, explicit two-parent merge strategies).
+  - [ ] 012.7.3 Define approval gates that mirror decision-first protocol
+        semantics (prompt, rationale, explicit accept/reject).
+  - [ ] 012.7.4 Define fallback behavior when LLM services are unavailable.
