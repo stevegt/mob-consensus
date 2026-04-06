@@ -67,6 +67,12 @@ Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaultin
 - `Exceptions:` listing only user-approved deviations.
 - Every non-trivial behavior change must include intent provenance per existing DI requirements.
 
+## Philosophy Protocol Note (Required)
+- Collaboration model is peer-to-peer and pull-based: users fetch from peers and push only their own branches.
+- Do not assume a PR-gated workflow when designing or changing mob-consensus behavior or docs.
+- DF (Decision-First) is required before changes; DI records settled intent; DR records open decision requests.
+- mob-consensus may assist DI/DR workflows but should not embed repo-specific DI/DR governance as runtime policy logic.
+
 ## Comment Preservation Protocol (Required)
 - Never remove existing code comments unless they are replaced in the same patch by equal-or-better explanatory comments near the same logic.
 - When rewriting or refactoring code, port old explanatory intent first, then improve wording.

@@ -17,12 +17,24 @@ Constraints: Same binary and same algorithm/codepath as `mob-consensus`; no
 code changes in this TODO; focus on design tradeoffs and rollout shape.
 Affects: `TODO/022-git-consensus-subcommand.md`, `TODO/TODO.md`.
 
+ID: DI-022-20260406-191500
+Date: 2026-04-06 19:15:00
+Status: active
+Decision: Align `git consensus` evaluation criteria with peer-to-peer/no-PR philosophy and DF/DI/DR facilitation boundaries.
+Intent: Ensure command naming/interface debate does not drift into a PR-centric workflow model or protocol-engine scope.
+Constraints: Documentation/planning-only change; keep evaluation implementation-neutral.
+Affects: `TODO/022-git-consensus-subcommand.md`, `TODO/023-mob-consensus-philosophy.md`
+
 ## Scope
 
 - Analyze `git consensus` as the primary command name candidate.
 - Assume one binary with dual entry names (`mob-consensus`,
   `git-consensus`) and identical behavior.
 - Compare architecture/UX tradeoffs only (not implementation steps).
+- Keep workflow assumptions peer-to-peer and pull-based (no required PR
+  gate in the baseline model).
+- Treat DI/DR as process-layer concerns that the CLI can expose/contextualize,
+  not as repository-specific runtime policy logic.
 
 ## Pros and cons to analyze
 

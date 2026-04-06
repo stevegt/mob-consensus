@@ -10,6 +10,14 @@ Intent: Keep the collaboration model explicit and stable as humans and AI agents
 Constraints: No PR dependency; peer-to-peer pull-based workflow; ownership boundaries stay hard safety invariants; DI/DR protocol semantics are not hardcoded in mob-consensus runtime.  
 Affects: `TODO/023-mob-consensus-philosophy.md`, `TODO/TODO.md`
 
+ID: DI-023-20260406-190000  
+Date: 2026-04-06 19:00:00  
+Status: active  
+Decision: Execute phase 1 philosophy alignment by updating TODO 008, TODO 015, TODO 022, README, and AGENTS with consistent peer-to-peer and DF/DI/DR facilitator language.  
+Intent: Remove drift and contradictions before recovery/stabilization work so implementation decisions follow a single collaboration model.  
+Constraints: Documentation/TODO alignment only in this phase; no runtime behavior changes; retain append-only DI history.  
+Affects: `TODO/023-mob-consensus-philosophy.md`, `TODO/008-support-fork-remotes.md`, `TODO/015-cli-tui-api-interfaces.md`, `TODO/022-git-consensus-subcommand.md`, `README.md`, `AGENTS.md`, `TODO/TODO.md`
+
 ## Purpose
 
 mob-consensus is an intermediate collaboration tool on the path to PromiseGrid implementation. Its job is to help people and agents converge code safely and frequently while building grid-era systems and related tooling.
@@ -40,9 +48,9 @@ Git is the current substrate. Keep behavior deterministic and safety-first now, 
 
 ## Implementation Checklist
 
-- [ ] 023.1 Align `TODO/008-support-fork-remotes.md` language with this philosophy.
-- [ ] 023.2 Align `TODO/015-cli-tui-api-interfaces.md` with facilitator boundaries and reusable engine direction.
-- [ ] 023.3 Align `TODO/022-git-consensus-subcommand.md` wording with no-PR, peer-to-peer workflow.
-- [ ] 023.4 Add a short philosophy section to `README.md`.
-- [ ] 023.5 Add a short philosophy protocol note to `AGENTS.md`.
-- [ ] 023.6 Clarify DI/DR facilitation boundaries in related TODO and docs where ambiguous.
+- [x] 023.1 Align `TODO/008-support-fork-remotes.md` language with this philosophy.
+- [x] 023.2 Align `TODO/015-cli-tui-api-interfaces.md` with facilitator boundaries and reusable engine direction.
+- [x] 023.3 Align `TODO/022-git-consensus-subcommand.md` wording with no-PR, peer-to-peer workflow.
+- [x] 023.4 Add a short philosophy section to `README.md`.
+- [x] 023.5 Add a short philosophy protocol note to `AGENTS.md`.
+- [x] 023.6 Clarify DI/DR facilitation boundaries in related TODO and docs where ambiguous.
