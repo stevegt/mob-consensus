@@ -55,6 +55,14 @@ Intent: Recover high-impact push-guidance and system-test changes without distur
 Constraints: Treat stash as read-only source; do not drop/apply stash; keep reconciliation branch isolated from `stevegt/main` until validated.
 Affects: `main.go`, `main_integration_test.go`, `scripts/mc-test`, `usage.tmpl`, `TODO/020-recover-jj-main-into-stevegt-main.md`
 
+ID: DI-020-20260406-203000
+Date: 2026-04-06 20:30:00
+Status: active
+Decision: Complete reconciliation close-out by merging `recover/stevegt-main-reconcile` into `stevegt/main`, then start phase-2 stabilization on `stabilize-021-018`.
+Intent: Preserve recovered work on the canonical branch before continuing TODO 021/018 stabilization in an isolated branch.
+Constraints: Keep `stash@{0}` untouched; keep `jj/main` untouched; run `go test` after merge and request user `scripts/mc-test all` verification.
+Affects: `stevegt/main`, `stabilize-021-018`, `TODO/020-recover-jj-main-into-stevegt-main.md`
+
 - [ ] 020.1 Capture immutable recovery artifacts
   - [x] 020.1.1 Verify branch and stash baseline:
     - `git rev-parse --abbrev-ref HEAD`
@@ -75,7 +83,7 @@ Affects: `main.go`, `main_integration_test.go`, `scripts/mc-test`, `usage.tmpl`,
   - [x] 020.2.1 Create reconcile branch:
     - `git switch stevegt/main`
     - `git switch -c recover/stevegt-main-reconcile`
-  - [ ] 020.2.2 Verify clean baseline before applying any recovered deltas:
+  - [x] 020.2.2 Verify clean baseline before applying any recovered deltas:
     - `git status --short --branch`
     - `git log --oneline --decorate -n 5`
 
@@ -93,23 +101,25 @@ Affects: `main.go`, `main_integration_test.go`, `scripts/mc-test`, `usage.tmpl`,
 
 - [ ] 020.4 Reconcile source deltas onto `recover/stevegt-main-reconcile`
   - [x] 020.4.1 Use `recover/jj-main-wip` and `stash@{0}` as read-only sources.
-  - [ ] 020.4.2 Port only DI-approved chunks; do not batch-apply everything.
-  - [ ] 020.4.3 Keep behavior comments and add `Intent` + `Source: DI-...`
+  - [x] 020.4.2 Port only DI-approved chunks; do not batch-apply everything.
+  - [x] 020.4.3 Keep behavior comments and add `Intent` + `Source: DI-...`
         markers for non-trivial behavior changes.
 
 - [ ] 020.5 Validate and prepare handoff
-  - [ ] 020.5.1 Verify no conflict markers remain:
+  - [x] 020.5.1 Verify no conflict markers remain:
     - `rg -n '^(<<<<<<<|=======|>>>>>>>)'`
-  - [ ] 020.5.2 Verify branch safety invariants:
+  - [x] 020.5.2 Verify branch safety invariants:
     - `git rev-parse --verify refs/heads/jj/main`
     - `git rev-parse --verify stash@{0}`
   - [ ] 020.5.3 Run Go tests and ask user to run `scripts/mc-test all`.
-  - [ ] 020.5.4 Provide Decision Compliance and comment/provenance audits.
+    - [x] 020.5.3.1 Run `go test ./...` after reconciliation merge.
+    - [ ] 020.5.3.2 Ask user to run `scripts/mc-test all` and review `/tmp/mob-consensus-mc-test.log`.
+  - [x] 020.5.4 Provide Decision Compliance and comment/provenance audits.
 
 - [ ] 020.6 Branch-setup bakeoff gate (TODO 021)
   - [x] 020.6.1 Pause implementation while bakeoff spec is prepared.
   - [x] 020.6.2 Resume gate replaced by stabilization checkpoint (DI-020-20260330-235100).
-  - [ ] 020.6.3 Resume reconciliation only after TODO 021.13 stabilization
-        tasks are complete and reviewed.
-  - [ ] 020.6.4 After stabilization commit, open/execute the TODO 012 AI/DF
-        refactor intake before additional branch behavior changes.
+  - [x] 020.6.3 Supersede prior gate order with DI-020-20260406-203000:
+        reconcile/merge first, then continue TODO 021 stabilization on a fresh branch.
+  - [x] 020.6.4 Start stabilization branch from merged `stevegt/main`:
+        `git switch -c stabilize-021-018`.

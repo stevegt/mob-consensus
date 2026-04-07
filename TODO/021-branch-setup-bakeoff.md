@@ -36,6 +36,14 @@ Affects: `main.go`, `cli.go`, `main_integration_test.go`, `scripts/mc-test`,
 `TODO/012-llm-assisted-review-and-approval.md`, `TODO/TODO.md`.
 Supersedes: DI-021-20260326-205942
 
+ID: DI-021-20260406-203500
+Date: 2026-04-06 20:35:00
+Status: active
+Decision: Start TODO 021 implementation on branch `stabilize-021-018` after reconciliation merge to `stevegt/main`.
+Intent: Keep stabilization changes isolated and reviewable while preserving a clean post-recovery mainline.
+Constraints: Begin with 021.8/021.9/021.12/021.13 slices; keep peer-ownership invariants unchanged; continue using `go test` + user-run `scripts/mc-test all`.
+Affects: `stabilize-021-018`, `TODO/021-branch-setup-bakeoff.md`, `TODO/020-recover-jj-main-into-stevegt-main.md`
+
 ## Archived candidates
 
 - A) Current `branch create` flow.
