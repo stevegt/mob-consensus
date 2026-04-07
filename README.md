@@ -11,6 +11,9 @@ The `<user>` prefix is derived from `git config user.email` (the part left of `@
 - Each collaborator **pushes only to their own remote** (often their fork).
 - Each collaborator **fetches from all** other collaborator remotes.
 - The group converges by repeating: fetch peers → merge → push → peers fetch you.
+- The workflow does **not require pull requests** as the convergence mechanism.
+- Decision-First (DF) is required before implementation; DI/DR records are
+  process artifacts that mob-consensus helps surface during collaboration.
 
 When multiple remotes exist, keep pushes explicit with `git push -u <your-remote> <branch>` so the upstream is set to your own remote.
 

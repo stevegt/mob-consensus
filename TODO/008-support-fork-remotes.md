@@ -10,6 +10,16 @@ remotes (ex: your remote = `origin`, plus collaborator remotes like
 `jj`, `bob`, etc). There should be no special “fork mode”: multi-remote
 is the normal case.
 
+## Decision Intent Log
+
+ID: DI-008-20260406-190500
+Date: 2026-04-06 19:05:00
+Status: active
+Decision: Align multi-remote TODO language with TODO 023 philosophy: peer-to-peer, no PR dependency, and mob-consensus as DF/DI/DR facilitator (not protocol runtime).
+Intent: Keep multi-remote design consistent with the current collaboration model before implementation resumes.
+Constraints: Documentation alignment only; preserve existing checklist structure.
+Affects: `TODO/008-support-fork-remotes.md`, `TODO/023-mob-consensus-philosophy.md`
+
 ## Can mob-consensus do this already?
 
 Partially:
@@ -44,8 +54,9 @@ Gaps:
 
 - Peer-to-peer is the default: users fetch from many remotes but push
   only to their own remote.
-- Push remote must be explicitly configured (via `git push -u <your-remote> <branch>`
-  or `branch.<name>.pushRemote`). Do not push to a collaborator's remote.
+- No PR dependency in the core workflow: convergence happens by fetch + merge + push cycles across collaborator remotes.
+- Upstream intent should be captured at branch creation with
+  `git push -u <your-remote> <branch>`; do not push to a collaborator remote.
 
 ## Repo-tracked collaborator configuration
 
@@ -140,6 +151,13 @@ Directory:
 
 Note: repo config is shared; per-user overrides should live in `.git/config`
 or a non-committed “local” config file (ex: `.mob-consensus.local.toml`).
+
+## DI/DR facilitation boundary
+
+This TODO focuses Git collaboration behavior (fetch/merge/push and remote
+discovery). It should not add repository-specific DI/DR protocol semantics as
+runtime logic. mob-consensus may surface DI/DR context and hooks, but remains
+a facilitator for human/agent workflow rather than a DI/DR rules engine.
 
 ## Subtasks
 

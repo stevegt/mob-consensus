@@ -90,7 +90,7 @@ Constraints:
 2. Collaborators work normally (edit/commit/push on their own `<user>/<twig>` branches).
 3. Periodically, anyone runs `mob-consensus status` to see which sibling branches are ahead/behind/diverged.
 4. When it’s time to converge, pick a sibling branch and merge it into the current branch:
-   - Example: `mob-consensus merge jj/feature-x`
+   - Example: `mob-consensus merge remote1/feature-x`
    - Resolve conflicts (mergetool), review changes (difftool), commit (with co-authors), push (unless `-n`).
 5. Repeat until the relevant sibling branches are “synced”, or until the group agrees the session’s integrated state is complete.
 

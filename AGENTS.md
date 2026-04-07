@@ -15,9 +15,63 @@
 Notes: the tool runs `git fetch`, uses `git mergetool`/`git difftool` (defaulting to `vimdiff`), and pushes after commits unless `-n` is set.
 
 ## Coding Style & Naming Conventions
+- Use object-oriented design with structs and methods; avoid large functions and global state.
+- Follow generally accepted object oriented design patterns.
 - Bash: keep changes small and readable; validate with `bash -n x/mob-consensus` (and `shellcheck x/mob-consensus` if available).
 - Go: run `gofmt`; keep package names short and lower-case. Minimum supported Go is 1.24.0 (see `go.mod`).
 - Always add detailed comments to code.
+
+## Decision-First Specification and Compliance Protocol (Required)
+- The agent must collect and lock user decisions before making any code edits for a task.
+- Locked decisions must be recorded as Decision Intent Log entries in the relevant `TODO/*.md` file(s) with clear intent and rationale.
+- The agent must ask decision questions up front in a single intake round whenever possible.
+- Required decision categories are architecture, design/behavior, implementation approach, function naming, variable naming, and file/path decisions.
+- The agent must ask these as multiple-choice questions whenever practical.
+
+### Naming Decisions (Required)
+- The agent must not invent function names or variable names that are not already covered by locked naming decisions.
+- If naming is not covered, the agent must stop and ask multiple-choice naming options before continuing.
+
+### File/Path Decisions (Required)
+- Path approvals are mandatory for all touched paths:
+  - repo-changed files (create/rename/move/delete),
+  - runtime touched paths (read/write/delete), including input files, output files, DB files, caches, fixtures, and temporary test files.
+- The agent must ask path approvals one path at a time via multiple-choice questions.
+- Path-question order must be dependency order.
+- Each path question must include: action, exact path (or approved dynamic pattern ID), purpose, class (`prod-code | prod-data | test | temp`), and lifecycle intent.
+- Temporary test paths require explicit approval and an explicit cleanup plan before handoff.
+- Dynamic/runtime-generated paths must be approved by pattern, with:
+  - allowed root bounds,
+  - allowed actions,
+  - concrete examples.
+- The agent must ask one multiple-choice approval per dynamic path pattern.
+- If any unapproved runtime path appears, the agent must stop and ask before continuing.
+
+### Decision Lock and Stop Rule
+- The agent must produce a Decision Lock summary with decision IDs before code edits begin.
+- The agent must not proceed if any required decision is missing, ambiguous, or conflicting.
+- The agent must stop and ask immediately if a new decision need appears during implementation.
+- The agent must not assume defaults for locked categories unless the user explicitly approves defaults.
+
+### Compliance Ownership (Agent)
+- The agent must treat user decisions as authoritative and implement to those decisions.
+- The agent must run a compliance self-review before finalizing and must fix all non-compliance before handoff.
+- Hard gate: work is incomplete until compliance is PASS, or the user explicitly approves an exception.
+- The user should not need to manually inspect diffs to determine compliance.
+
+### Required final handoff artifacts
+- `Decision Compliance: PASS/FAIL`
+- Decision Matrix mapping each locked decision ID to implementation evidence.
+- Inline diff annotations in the form `path:line -> decision_id -> rationale`.
+- Runtime Path Touch Matrix listing each approved runtime path/pattern, action used, and where it is implemented/validated.
+- `Exceptions:` listing only user-approved deviations.
+- Every non-trivial behavior change must include intent provenance per existing DI requirements.
+
+## Philosophy Protocol Note (Required)
+- Collaboration model is peer-to-peer and pull-based: users fetch from peers and push only their own branches.
+- Do not assume a PR-gated workflow when designing or changing mob-consensus behavior or docs.
+- DF (Decision-First) is required before changes; DI records settled intent; DR records open decision requests.
+- mob-consensus may assist DI/DR workflows but should not embed repo-specific DI/DR governance as runtime policy logic.
 
 ## Comment Preservation Protocol (Required)
 - Never remove existing code comments unless they are replaced in the same patch by equal-or-better explanatory comments near the same logic.

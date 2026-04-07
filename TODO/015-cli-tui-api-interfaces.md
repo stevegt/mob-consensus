@@ -14,17 +14,31 @@ Goal: define a clean, conventional command hierarchy and a shared “engine” A
 - AI agents can use the CLI non-interactively *or* call a Go API programmatically,
 - tests (`go test`, `scripts/mc-test`) can drive stable interfaces.
 
+## Decision Intent Log
+
+ID: DI-015-20260406-191000
+Date: 2026-04-06 19:10:00
+Status: active
+Decision: Align CLI/TUI/API interface direction with TODO 023 philosophy and explicit facilitator boundaries.
+Intent: Keep interface redesign work consistent with peer-to-peer workflow and required DF protocol before additional command churn.
+Constraints: Planning/documentation updates only in this change.
+Affects: `TODO/015-cli-tui-api-interfaces.md`, `TODO/023-mob-consensus-philosophy.md`
+
 ## Design principles
 
 - Prefer explicit verbs over implicit modes (ex: `mob-consensus merge
   <ref>` instead of `mob-consensus <ref>`).
 - Preserve scriptability: `--plan`, `--dry-run`, `--yes` must remain
   first-class and never require a TTY.
+- Keep the core model peer-to-peer and pull-based (no PR dependency in
+  command design assumptions).
 - Single source of truth: build a **structured plan** (steps +
   explanations) once; UI layers only render/confirm/execute it.
 - Avoid remote/name magic (align with TODO 006/008): only choose
   defaults when unambiguous; otherwise prompt or error with exact
   commands.
+- Keep DI/DR semantics out of runtime policy logic; provide interfaces
+  that can carry DI/DR context for human/agent review workflows.
 
 ## Recommendation: adopt Cobra for the CLI
 
@@ -92,6 +106,8 @@ Suggested shape:
 - Output: structured `Plan` and/or structured “state” objects (related
   branches, merge target resolution, push advice).
 - No direct prompting/printing inside the engine; UI layers own I/O.
+- No repository-specific DI/DR protocol enforcement inside the engine;
+  policy remains in process contracts and higher-level orchestration.
 
 This enables:
 - CLI and Bubble Tea TUI to share the same plan/state machine.

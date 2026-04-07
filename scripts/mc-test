@@ -4,6 +4,8 @@ set -f
 
 prog="mc-test"
 root_marker=".mc-test-root"
+default_log_file="/tmp/mob-consensus-mc-test.log"
+mc_test_log_file="${MC_TEST_LOG_FILE:-$default_log_file}"
 
 usage() {
   cat <<'EOF' >&2
@@ -30,6 +32,7 @@ Scenarios:
   detached-branch  Exercise detached-HEAD behavior for `branch create`.
   dirty      Exercise dirty-tree failures and `-c` auto-commit flow.
   smartpush  Exercise upstreamless push behavior (single vs multiple remotes).
+  wrong-remote-push  Exercise denied push to shared remote with inferred fork guidance.
   multiremote-fetch  Exercise fetch selection and ambiguity errors.
   converge   Multi-user file edits + merges; verify final trees have no diffs.
 
@@ -49,6 +52,7 @@ Where it writes (harness layout): everything goes under the harness root ROOT:
   - ROOT/coverage.out, ROOT/coverage.html, ROOT/coverage.func.txt, ROOT/coverage.total.txt, ROOT/coverage.zero.txt, ROOT/coverage.low.txt (coverage outputs)
   - ROOT/gocache, ROOT/gomodcache (Go build caches, so we don't write to your global caches)
   - ROOT/gotmp (Go temp dir for builds/tools)
+  - /tmp/mob-consensus-mc-test.log (stable run log; overwritten each invocation, configurable via MC_TEST_LOG_FILE)
 
 Safety checks:
   - harness refuses to run unless ROOT is an empty directory (prevents accidentally writing into e.g. $HOME).
@@ -63,6 +67,25 @@ EOF
 die() {
   echo "$prog: $*" >&2
   exit 2
+}
+
+init_log_tee() {
+  if [[ "${MC_TEST_LOG_TEE_ACTIVE:-0}" == "1" ]]; then
+    return
+  fi
+  export MC_TEST_LOG_TEE_ACTIVE=1
+
+  local log_dir
+  log_dir="$(dirname -- "$mc_test_log_file")"
+  [[ -d "$log_dir" ]] || die "log directory does not exist: $log_dir"
+
+  : >"$mc_test_log_file" || die "cannot write log file: $mc_test_log_file"
+
+  # Intent: Keep a stable, agent-readable run log without changing existing
+  # stdout/stderr semantics used by command substitution in script internals.
+  # Source: DI-010-20260406-200000
+  exec > >(tee -a "$mc_test_log_file")
+  exec 2> >(tee -a "$mc_test_log_file" >&2)
 }
 
 run() {
@@ -541,8 +564,8 @@ scenario_branch() {
   assert_branch "$leader_repo" "$leader/$twig"
 
   # Force ambiguous push advice: 2 remotes + no upstream.
-  run_maybe git -C "$leader_repo" remote remove jj
-  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run_maybe git -C "$leader_repo" remote remove remote1
+  run git -C "$leader_repo" remote add remote1 "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
   out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" branch create "$twig" 2>&1)"
   assert_contains "$out" "git push -u <remote> $leader/$twig"
@@ -550,7 +573,7 @@ scenario_branch() {
 
   run git -C "$leader_repo" fetch origin
   run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
-  run git -C "$leader_repo" remote remove jj
+  run git -C "$leader_repo" remote remove remote1
 }
 
 scenario_detached_branch() {
@@ -660,7 +683,7 @@ scenario_smartpush() {
 
   echo "$prog: smartpush (upstreamless push behavior)" >&2
 
-  run_maybe git -C "$leader_repo" remote remove jj
+  run_maybe git -C "$leader_repo" remote remove remote1
 
   # Case 1: single remote, no upstream -> push -u should set upstream.
   run git -C "$leader_repo" switch "$leader/$twig"
@@ -677,7 +700,7 @@ scenario_smartpush() {
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
 
   # Case 2: multiple remotes, no upstream -> smartPush should error.
-  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run git -C "$leader_repo" remote add remote1 "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
   git -C "$leader_repo" config --local --unset "branch.$leader/$twig.pushRemote" 2>/dev/null || true
 
@@ -706,7 +729,99 @@ scenario_smartpush() {
 
   run mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig"
   run git -C "$leader_repo" rev-parse --abbrev-ref --symbolic-full-name "@{u}"
-  run git -C "$leader_repo" remote remove jj
+  run git -C "$leader_repo" remote remove remote1
+}
+
+scenario_wrong_remote_push() {
+  local root="$1" users="$2" twig="$3" base="$4" noninteractive="$5" editor="$6"
+  local mc_bin="$root/mob-consensus"
+  local leader
+  leader="$(awk '{print $1}' <<<"$users")"
+
+  local other=""
+  for u in $users; do
+    if [[ "$u" != "$leader" ]]; then
+      other="$u"
+      break
+    fi
+  done
+  if [[ -z "$other" ]]; then
+    die "wrong-remote-push scenario needs at least 2 users"
+  fi
+
+  local leader_repo="$root/$leader"
+  local other_repo="$root/$other"
+  local fork_remote="$root/${leader}-fork.git"
+  local origin_hook="$REMOTE/hooks/pre-receive"
+  local origin_hook_backup="$root/.mc-test-pre-receive.backup"
+  local had_origin_hook="0"
+
+  restore_origin_hook() {
+    if [[ "$had_origin_hook" == "1" ]]; then
+      run mv "$origin_hook_backup" "$origin_hook"
+    else
+      run rm -f "$origin_hook"
+    fi
+  }
+
+  # Intent: Always restore hook state even when assertions fail so one failing
+  # scenario cannot poison later scenarios in `mc-test run --scenario all`.
+  # Source: DI-018-20260406-201500
+  trap restore_origin_hook RETURN
+
+  echo "$prog: wrong-remote-push (denied shared-remote push + inferred fork guidance)" >&2
+
+  # Ensure the leader branch is tracking origin so merge auto-push targets the
+  # shared remote first (the realistic "wrong remote" starting point).
+  run git -C "$leader_repo" switch "$leader/$twig"
+  run git -C "$leader_repo" push -u origin "$leader/$twig"
+
+  # Add a per-user fork remote named after the user; this should be inferred by
+  # mob-consensus guidance when the shared-origin push fails.
+  run_maybe rm -rf "$fork_remote"
+  run git init --bare "$fork_remote"
+  run git -C "$fork_remote" symbolic-ref HEAD "refs/heads/$base"
+  run_maybe git -C "$leader_repo" remote remove "$leader"
+  run git -C "$leader_repo" remote add "$leader" "$fork_remote"
+
+  # If origin already has a pre-receive hook, preserve it and restore it later.
+  run rm -f "$origin_hook_backup"
+  if [[ -e "$origin_hook" ]]; then
+    run cp "$origin_hook" "$origin_hook_backup"
+    had_origin_hook="1"
+  fi
+
+  # Peer contributes a change on their personal branch and pushes it.
+  run git -C "$other_repo" switch "$other/$twig"
+  mkdir -p "$other_repo/wrong-remote"
+  echo "wrong-remote from $other" >"$other_repo/wrong-remote/$other.txt"
+  run git -C "$other_repo" add "wrong-remote/$other.txt"
+  run git -C "$other_repo" commit -m "Wrong-remote scenario ($other)"
+  run git -C "$other_repo" push
+
+  # Install rejection only after peer push, so this scenario fails exactly at
+  # the leader's wrong-remote push path instead of earlier setup pushes.
+  cat >"$origin_hook" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "remote: write access to repository not granted" >&2
+exit 1
+EOF
+  run chmod +x "$origin_hook"
+
+  run git -C "$leader_repo" switch "$leader/$twig"
+  local out
+  if out="$(mc_run "$leader_repo" "$mc_bin" "$editor" "$noninteractive" merge "origin/$other/$twig" 2>&1)"; then
+    die "expected merge push to fail with shared-remote permission denial"
+  fi
+  assert_contains "$out" "Push target that failed: origin"
+  assert_contains "$out" "inferred likely personal remote \"$leader\""
+  assert_contains "$out" "git push -u $leader $leader/$twig"
+  assert_contains "$out" "Git stderr (exact):"
+  assert_contains "$out" "write access to repository not granted"
+
+  trap - RETURN
+  restore_origin_hook
 }
 
 scenario_multiremote_fetch() {
@@ -719,8 +834,8 @@ scenario_multiremote_fetch() {
   echo "$prog: multiremote-fetch (fetch selection with multiple remotes)" >&2
 
   run git -C "$leader_repo" switch "$leader/$twig"
-  run_maybe git -C "$leader_repo" remote remove jj
-  run git -C "$leader_repo" remote add jj "$REMOTE"
+  run_maybe git -C "$leader_repo" remote remove remote1
+  run git -C "$leader_repo" remote add remote1 "$REMOTE"
   run_maybe git -C "$leader_repo" branch --unset-upstream
 
   # With multiple remotes and no upstream, status should still work because we fetch all.
@@ -732,7 +847,7 @@ scenario_multiremote_fetch() {
   run git -C "$leader_repo" fetch origin
   run git -C "$leader_repo" branch --set-upstream-to="origin/$leader/$twig" "$leader/$twig"
 
-  run git -C "$leader_repo" remote remove jj
+  run git -C "$leader_repo" remote remove remote1
 }
 
 scenario_converge() {
@@ -971,6 +1086,7 @@ cmd_run() {
       scenario_detached_branch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_dirty "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_smartpush "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      scenario_wrong_remote_push "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_multiremote_fetch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       scenario_converge "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       ;;
@@ -997,6 +1113,9 @@ cmd_run() {
       ;;
     smartpush)
       scenario_smartpush "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
+      ;;
+    wrong-remote-push)
+      scenario_wrong_remote_push "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
       ;;
     multiremote-fetch)
       scenario_multiremote_fetch "$root" "$users" "$twig" "$base" "$noninteractive" "$editor"
@@ -1050,6 +1169,8 @@ main() {
     usage
     exit 0
   fi
+
+  init_log_tee
 
   shift || true
   case "$cmd" in

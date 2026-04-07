@@ -11,6 +11,16 @@ by default) the full `mob-consensus` workflow with multiple simulated
 users who **actually create, modify, and merge files across clones**,
 and produce a repeatable coverage report.
 
+## Decision Intent Log
+
+ID: DI-010-20260406-200000
+Date: 2026-04-06 20:00:00
+Status: active
+Decision: Add a stable default run log path (`/tmp/mob-consensus-mc-test.log`) and tee mc-test output there while keeping terminal output unchanged.
+Intent: Make failure triage reproducible for users and agents without changing harness-root safety boundaries.
+Constraints: Default path must be under `/tmp`, remain configurable via environment variable, and not break command-substitution behavior in script internals.
+Affects: `scripts/mc-test`, `TODO/010-extend-mc-test.md`
+
 ## Decisions (locked in)
 
 - Conflict automation: **parameterized** resolution strategy (`ours` vs `theirs`) instead of hard-coding.
@@ -57,15 +67,15 @@ and produce a repeatable coverage report.
   - [x] 010.3.2 Repeat with `-c`; assert an auto-commit is created before the merge and the worktree ends clean.
 - [x] 010.4 Add scenario `smartpush`:
   - [x] 010.4.1 No upstream + single remote: after merge/commit, assert `-u` upstream gets set.
-- [x] 010.4.2 Add a second remote (e.g. `jj`) and assert `smartPush` errors until an upstream is set (via `git push -u <remote> <branch>` or `branch.<name>.pushRemote`).
+  - [x] 010.4.2 Add a second remote (e.g. `remote1`) and assert `smartPush` errors until an upstream is set (via `git push -u <remote> <branch>` or `branch.<name>.pushRemote`).
 - [ ] 010.5 Add scenario `multi-remote-fetch`:
   - [x] 010.5.1 With 2 remotes and no upstream, assert discovery fails with a clear “multiple remotes” error.
   - [x] 010.5.2 With upstream set, assert discovery proceeds.
-  - [ ] 010.5.3 Add merge-mode coverage under multi-remote setups:
+    - [ ] 010.5.3 Add merge-mode coverage under multi-remote setups:
     - [ ] 010.5.3.1 Ambiguous shorthand merge target:
-      - Setup: two remotes (e.g. `origin` + `jj`) both have `<peer>/<twig>` remote-tracking refs.
+      - Setup: two remotes (e.g. `origin` + `remote1`) both have `<peer>/<twig>` remote-tracking refs.
       - Action: `mob-consensus merge <peer>/<twig>`
-      - Assert: fails with a clear “ambiguous” error listing exact candidates (`origin/<peer>/<twig>`, `jj/<peer>/<twig>`) and a hint to retry with an explicit remote ref.
+      - Assert: fails with a clear “ambiguous” error listing exact candidates (`origin/<peer>/<twig>`, `remote1/<peer>/<twig>`) and a hint to retry with an explicit remote ref.
     - [ ] 010.5.3.2 Explicit remote merge works:
       - Action: `mob-consensus merge origin/<peer>/<twig>`
       - Assert: succeeds (and co-author trailers are preserved where applicable).
@@ -151,6 +161,10 @@ Baseline run: `scripts/mc-test coverage --root /tmp/tmp.LVlJXTGvxj/`
   - [ ] 010.12.4 For the system profile (primary signal):
     - write `coverage.zero.txt` and `coverage.low.txt`
   - [ ] 010.12.5 Safety: keep outputs under `ROOT/` only; never write coverage artifacts into the source repo.
+- [x] 010.13 Add stable run log output path for easier triage:
+  - [x] 010.13.1 `scripts/mc-test` tees stdout/stderr to `/tmp/mob-consensus-mc-test.log` by default.
+  - [x] 010.13.2 Keep path configurable via `MC_TEST_LOG_FILE` for local overrides.
+  - [x] 010.13.3 Document this path in `mc-test --help` under harness/runtime writes.
 
 ## Notes / risks
 
