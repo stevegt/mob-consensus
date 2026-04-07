@@ -9,7 +9,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 022 - Evaluate `git consensus` subcommand architecture (`TODO/022-git-consensus-subcommand.md`)
 - [ ] 021 - Branch setup stabilization checkpoint (no peer pushes + peer hygiene warnings) (`TODO/021-branch-setup-bakeoff.md`)
 - [ ] 017 - Check git difftool/mergetool config + assist setup (`TODO/017-check-difftool-mergetool-config.md`)
-- [ ] 018 - Guard detached HEAD branching & push-permission guidance (`TODO/018-detached-head-and-push-permissions.md`)
+- [x] 018 - Guard detached HEAD branching & push-permission guidance (`TODO/018-detached-head-and-push-permissions.md`)
 - [ ] 020 - Recover `jj/main` work onto `stevegt/main` with decision-first reconciliation (`TODO/020-recover-jj-main-into-stevegt-main.md`)
 - [x] 004 - Per-repo test user init script (`TODO/004-per-repo-test-user-script.md`)
 - [ ] 010 - Extend mc-test for deeper system coverage (`TODO/010-extend-mc-test.md`)

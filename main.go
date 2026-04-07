@@ -75,6 +75,27 @@ type options struct {
 	yes bool
 }
 
+// remoteInfo contains fetch/push URL metadata for one configured remote.
+// The fields are best-effort snapshots from `git remote -v`.
+type remoteInfo struct {
+	Name     string
+	FetchURL string
+	PushURL  string
+}
+
+// forkRemoteSuggestion captures the best-effort result of inferring which
+// remote likely corresponds to the current user's fork.
+//
+// Exactly one of Chosen or Candidates is set:
+//   - Chosen: one unambiguous likely remote
+//   - Candidates: multiple equally likely remotes
+type forkRemoteSuggestion struct {
+	User       string
+	Chosen     string
+	Reason     string
+	Candidates []string
+}
+
 // exitFunc exists so tests can stub process exit without terminating the test
 // process.
 var exitFunc = os.Exit
@@ -354,6 +375,93 @@ func listRemotes(ctx context.Context) ([]string, error) {
 	return remotes, nil
 }
 
+// listRemoteInfos returns fetch/push URL metadata for each configured remote.
+// It parses `git remote -v` output and returns one entry per remote name.
+func listRemoteInfos(ctx context.Context) ([]remoteInfo, error) {
+	remoteOut, err := gitOutputTrimmed(ctx, "remote", "-v")
+	if err != nil {
+		return nil, err
+	}
+	if remoteOut == "" {
+		return nil, nil
+	}
+
+	infoByName := make(map[string]*remoteInfo)
+	for _, line := range strings.Split(remoteOut, "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		if len(fields) < 3 {
+			continue
+		}
+
+		name := fields[0]
+		url := fields[1]
+		kind := strings.Trim(fields[2], "()")
+
+		info := infoByName[name]
+		if info == nil {
+			info = &remoteInfo{Name: name}
+			infoByName[name] = info
+		}
+
+		switch kind {
+		case "fetch":
+			info.FetchURL = url
+		case "push":
+			info.PushURL = url
+		default:
+			if info.FetchURL == "" {
+				info.FetchURL = url
+			}
+		}
+	}
+
+	infos := make([]remoteInfo, 0, len(infoByName))
+	for _, info := range infoByName {
+		infos = append(infos, *info)
+	}
+	sort.Slice(infos, func(i, j int) bool {
+		return infos[i].Name < infos[j].Name
+	})
+	return infos, nil
+}
+
+// branchUserFromBranch returns the "<user>" prefix from a branch of the form
+// "<user>/<twig>". It returns empty for detached HEAD or non-user branches.
+func branchUserFromBranch(branch string) string {
+	branch = strings.TrimSpace(branch)
+	if branch == "" || branch == "HEAD" {
+		return ""
+	}
+	i := strings.IndexByte(branch, '/')
+	if i <= 0 {
+		return ""
+	}
+	return strings.TrimSpace(branch[:i])
+}
+
+// remoteURLMatchesUser heuristically checks whether a remote URL appears to
+// belong to a given user account.
+func remoteURLMatchesUser(url, user string) bool {
+	url = strings.ToLower(strings.TrimSpace(url))
+	user = strings.ToLower(strings.TrimSpace(user))
+	if url == "" || user == "" {
+		return false
+	}
+
+	needles := []string{
+		"/" + user + "/",
+		":" + user + "/",
+		"/" + user + ".git",
+		":" + user + ".git",
+	}
+	for _, needle := range needles {
+		if strings.Contains(url, needle) {
+			return true
+		}
+	}
+	return false
+}
+
 // registryRemoteURL returns the remote URL for the given collaborator id from
 // the repo-tracked registry (.mob-consensus/u/<id>/remote.url). It returns an
 // empty string if no entry exists.
@@ -423,7 +531,7 @@ func ensurePushRemote(ctx context.Context, user string) (string, error) {
 // fetchSuggestedRemote updates remotes so subsequent operations see fresh refs.
 //
 // Policy:
-//   - If otherBranch is prefixed with a remote (ex: "jj/alice/feature-x"),
+//   - If otherBranch is prefixed with a remote (ex: "remote1/alice/feature-x"),
 //     fetch that remote.
 //   - Else if exactly one remote exists, fetch it.
 //   - Else fetch all remotes (`git fetch --all`) so multi-remote discovery/merge
@@ -1432,9 +1540,59 @@ func gitPushWithGuidance(ctx context.Context, currentBranch string, args ...stri
 	}
 
 	if isPushPermissionError(output + "\n" + stderrText + "\n" + err.Error()) {
-		return pushPermissionGuidanceError(ctx, currentBranch, stderrText)
+		attemptedRemote := pushTargetRemote(ctx, args)
+		return pushPermissionGuidanceError(ctx, currentBranch, attemptedRemote, stderrText)
 	}
 	return err
+}
+
+// pushTargetRemote extracts the remote target from a `git push` invocation.
+// When the command relies on implicit push target resolution (plain `git push`),
+// it mirrors Git's remote selection precedence used by our workflows:
+//  1. branch.<name>.pushRemote
+//  2. remote.pushDefault
+//  3. upstream remote
+//
+// Intent: Keep push-denied guidance accurate in fork workflows where tracking
+// may point at one remote but push defaults point at another.
+// Source: DI-018-20260406-194500
+func pushTargetRemote(ctx context.Context, pushArgs []string) string {
+	if len(pushArgs) == 0 || pushArgs[0] != "push" {
+		return ""
+	}
+
+	var positional []string
+	for _, arg := range pushArgs[1:] {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		positional = append(positional, arg)
+	}
+	if len(positional) > 0 {
+		return positional[0]
+	}
+
+	currentBranch, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "HEAD")
+	if err == nil && currentBranch != "" && currentBranch != "HEAD" {
+		branchPushRemote, branchErr := gitOutputTrimmed(ctx, "config", "--get", "branch."+currentBranch+".pushRemote")
+		if branchErr == nil && branchPushRemote != "" {
+			return branchPushRemote
+		}
+	}
+
+	remotePushDefault, err := gitOutputTrimmed(ctx, "config", "--get", "remote.pushDefault")
+	if err == nil && remotePushDefault != "" {
+		return remotePushDefault
+	}
+
+	upstream, err := gitOutputTrimmed(ctx, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil || upstream == "" || upstream == "HEAD" {
+		return ""
+	}
+	if i := strings.IndexByte(upstream, '/'); i > 0 {
+		return upstream[:i]
+	}
+	return ""
 }
 
 // isPushPermissionError heuristically matches common git push auth/write-denied
@@ -1467,32 +1625,33 @@ func isPushPermissionError(text string) bool {
 // and fork remediation, because local state cannot reliably distinguish which
 // workflow the user intended. Include exact git stderr for debugging context.
 // Source: DI-018-20260312-185440
-func pushPermissionGuidanceError(ctx context.Context, currentBranch, stderrText string) error {
+func pushPermissionGuidanceError(ctx context.Context, currentBranch, attemptedRemote, stderrText string) error {
 	remotes, err := listRemotes(ctx)
 	if err != nil {
 		remotes = nil
 	}
 	sort.Strings(remotes)
 
-	sharedWriteRemote := "<remote>"
-	if len(remotes) == 1 {
-		sharedWriteRemote = remotes[0]
+	sharedWriteRemote := strings.TrimSpace(attemptedRemote)
+	if sharedWriteRemote == "" {
+		if len(remotes) == 1 {
+			sharedWriteRemote = remotes[0]
+		} else {
+			sharedWriteRemote = "<remote>"
+		}
 	}
 
-	suggestedRemote := "<my-remote>"
-	user, userErr := branchUserFromEmail(ctx)
-	if userErr == nil {
-		for _, remote := range remotes {
-			if remote == user {
-				suggestedRemote = user
-				break
-			}
-		}
+	suggestion, inferErr := inferForkRemoteSuggestion(ctx, currentBranch, attemptedRemote)
+	if inferErr != nil {
+		suggestion = forkRemoteSuggestion{}
 	}
 
 	var builder strings.Builder
 	builder.WriteString("mob-consensus: push failed due to remote permissions/authentication.\n")
 	builder.WriteString("Possible causes: missing write access on a shared repo, or pushing to another collaborator's remote instead of your fork.\n")
+	if strings.TrimSpace(attemptedRemote) != "" {
+		fmt.Fprintf(&builder, "Push target that failed: %s\n", strings.TrimSpace(attemptedRemote))
+	}
 	if len(remotes) > 0 {
 		fmt.Fprintf(&builder, "Configured remotes: %s\n", strings.Join(remotes, ", "))
 	}
@@ -1500,14 +1659,156 @@ func pushPermissionGuidanceError(ctx context.Context, currentBranch, stderrText 
 	builder.WriteString("  Shared-write repo path:\n")
 	fmt.Fprintf(&builder, "    - verify auth/write access, then retry: git push -u %s %s\n", sharedWriteRemote, currentBranch)
 	builder.WriteString("  Fork workflow path:\n")
-	builder.WriteString("    - add your fork remote if needed: git remote add <my-remote> <fork-url>\n")
-	fmt.Fprintf(&builder, "    - push and set upstream: git push -u %s %s\n", suggestedRemote, currentBranch)
+
+	switch {
+	case suggestion.Chosen != "":
+		if suggestion.Reason != "" {
+			fmt.Fprintf(&builder, "    - inferred likely personal remote %q (%s)\n", suggestion.Chosen, suggestion.Reason)
+		} else {
+			fmt.Fprintf(&builder, "    - inferred likely personal remote %q\n", suggestion.Chosen)
+		}
+		fmt.Fprintf(&builder, "    - push and set upstream: git push -u %s %s\n", suggestion.Chosen, currentBranch)
+	case len(suggestion.Candidates) > 0:
+		fmt.Fprintf(&builder, "    - found multiple likely personal remotes: %s\n", strings.Join(suggestion.Candidates, ", "))
+		builder.WriteString("    - choose one and push:\n")
+		for _, remote := range suggestion.Candidates {
+			fmt.Fprintf(&builder, "      git push -u %s %s\n", remote, currentBranch)
+		}
+		builder.WriteString("    - if none are correct, add your fork remote: git remote add <my-remote> <fork-url>\n")
+	default:
+		if suggestion.User != "" {
+			fmt.Fprintf(&builder, "    - add your fork remote if needed: git remote add %s <fork-url>\n", suggestion.User)
+			fmt.Fprintf(&builder, "    - push and set upstream: git push -u %s %s\n", suggestion.User, currentBranch)
+		} else {
+			builder.WriteString("    - add your fork remote if needed: git remote add <my-remote> <fork-url>\n")
+			fmt.Fprintf(&builder, "    - push and set upstream: git push -u <my-remote> %s\n", currentBranch)
+		}
+	}
+
 	builder.WriteString("  Retry mob-consensus after either path succeeds.\n")
 	if strings.TrimSpace(stderrText) != "" {
 		builder.WriteString("\nGit stderr (exact):\n")
 		builder.WriteString(strings.TrimRight(stderrText, "\n"))
 	}
 	return errors.New(strings.TrimSpace(builder.String()))
+}
+
+// inferForkRemoteSuggestion returns a best-effort recommendation for the
+// current user's fork remote, based only on configured remotes and naming
+// signals (email-derived user, branch prefix, and remote URLs).
+//
+// Intent: On push-denied failures, suggest one likely personal remote when
+// possible, and explicitly report ambiguity otherwise to avoid guessing.
+// Source: DI-018-20260313-160356
+func inferForkRemoteSuggestion(ctx context.Context, currentBranch, attemptedRemote string) (forkRemoteSuggestion, error) {
+	remotes, err := listRemotes(ctx)
+	if err != nil {
+		return forkRemoteSuggestion{}, err
+	}
+	if len(remotes) == 0 {
+		return forkRemoteSuggestion{}, nil
+	}
+
+	suggestion := forkRemoteSuggestion{}
+
+	emailUser, err := branchUserFromEmail(ctx)
+	if err == nil {
+		suggestion.User = emailUser
+	}
+	branchUser := branchUserFromBranch(currentBranch)
+	if suggestion.User == "" {
+		suggestion.User = branchUser
+	}
+	if suggestion.User == "" {
+		return suggestion, nil
+	}
+
+	remoteInfos, err := listRemoteInfos(ctx)
+	if err != nil {
+		remoteInfos = nil
+	}
+	infoByName := make(map[string]remoteInfo, len(remoteInfos))
+	for _, info := range remoteInfos {
+		infoByName[info.Name] = info
+	}
+
+	type scoredCandidate struct {
+		Remote  string
+		Score   int
+		Reasons []string
+	}
+	var scored []scoredCandidate
+	for _, remote := range remotes {
+		if strings.TrimSpace(attemptedRemote) != "" && remote == strings.TrimSpace(attemptedRemote) {
+			continue
+		}
+
+		candidate := scoredCandidate{Remote: remote}
+		if remote == suggestion.User {
+			candidate.Score += 100
+			candidate.Reasons = append(candidate.Reasons, "remote name matches your user")
+		}
+		if branchUser != "" && branchUser != suggestion.User && remote == branchUser {
+			candidate.Score += 90
+			candidate.Reasons = append(candidate.Reasons, "remote name matches current branch prefix")
+		}
+
+		if info, ok := infoByName[remote]; ok {
+			if remoteURLMatchesUser(info.FetchURL, suggestion.User) || remoteURLMatchesUser(info.PushURL, suggestion.User) {
+				candidate.Score += 70
+				candidate.Reasons = append(candidate.Reasons, "remote URL appears user-owned")
+			}
+			if branchUser != "" && branchUser != suggestion.User &&
+				(remoteURLMatchesUser(info.FetchURL, branchUser) || remoteURLMatchesUser(info.PushURL, branchUser)) {
+				candidate.Score += 60
+				candidate.Reasons = append(candidate.Reasons, "remote URL matches current branch prefix")
+			}
+		}
+
+		if candidate.Score > 0 {
+			sort.Strings(candidate.Reasons)
+			scored = append(scored, candidate)
+		}
+	}
+	if len(scored) == 0 {
+		return suggestion, nil
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].Score != scored[j].Score {
+			return scored[i].Score > scored[j].Score
+		}
+		return scored[i].Remote < scored[j].Remote
+	})
+
+	topScore := scored[0].Score
+	if topScore < 70 {
+		// Low-confidence matches (for example, weak branch-prefix-only hints)
+		// should not drive automated guidance suggestions.
+		return suggestion, nil
+	}
+
+	var top []scoredCandidate
+	for _, candidate := range scored {
+		if candidate.Score != topScore {
+			break
+		}
+		top = append(top, candidate)
+	}
+
+	if len(top) == 1 {
+		suggestion.Chosen = top[0].Remote
+		suggestion.Reason = strings.Join(top[0].Reasons, "; ")
+		return suggestion, nil
+	}
+
+	names := make([]string, 0, len(top))
+	for _, candidate := range top {
+		names = append(names, candidate.Remote)
+	}
+	sort.Strings(names)
+	suggestion.Candidates = names
+	return suggestion, nil
 }
 
 // resolveMergeTarget resolves a user-supplied merge target.

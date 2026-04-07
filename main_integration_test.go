@@ -297,7 +297,20 @@ func initBareRemote(t *testing.T) string {
 	requireGit(t)
 
 	dir := filepath.Join(t.TempDir(), "remote.git")
+	return initBareRemoteAt(t, dir)
+}
+
+// initBareRemoteAt initializes a bare git remote at an explicit path and sets
+// its HEAD to `refs/heads/main` so clones behave deterministically.
+func initBareRemoteAt(t *testing.T, dir string) string {
+	t.Helper()
+	requireGit(t)
 	requireTempDir(t, dir)
+
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatalf("mkdir parent for bare remote: %v", err)
+	}
+
 	cmd := exec.Command("git", "init", "--bare", dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -311,6 +324,24 @@ func initBareRemote(t *testing.T) string {
 		t.Fatalf("git symbolic-ref HEAD refs/heads/main failed: %v\n%s", err, out)
 	}
 	return dir
+}
+
+// installRejectPushHook installs a pre-receive hook that always rejects pushes
+// with a stable permission-denied message. Tests use this to deterministically
+// exercise push guidance without relying on external hosting permissions.
+func installRejectPushHook(t *testing.T, bareRepo string) {
+	t.Helper()
+	requireTempDir(t, bareRepo)
+
+	hookPath := filepath.Join(bareRepo, "hooks", "pre-receive")
+	hookScript := `#!/usr/bin/env bash
+set -euo pipefail
+echo "remote: write access to repository not granted" >&2
+exit 1
+`
+	if err := os.WriteFile(hookPath, []byte(hookScript), 0o755); err != nil {
+		t.Fatalf("write pre-receive hook: %v", err)
+	}
 }
 
 // writeCommitMessageEditor creates an executable shell script that behaves like
@@ -503,7 +534,7 @@ func TestPrintPushAdvice(t *testing.T) {
 		}
 	}
 
-	gitCmd(t, repo, "remote", "add", "jj", repo)
+	gitCmd(t, repo, "remote", "add", "remote1", repo)
 	{
 		var out bytes.Buffer
 		if err := printPushAdvice(ctx, &out, "alice/feature-x"); err != nil {
@@ -513,7 +544,7 @@ func TestPrintPushAdvice(t *testing.T) {
 		if !strings.Contains(got, "git push -u <remote> alice/feature-x") {
 			t.Fatalf("expected placeholder push advice for multiple remotes, got:\n%s", got)
 		}
-		if !strings.Contains(got, "Available remotes:") || !strings.Contains(got, "origin") || !strings.Contains(got, "jj") {
+		if !strings.Contains(got, "Available remotes:") || !strings.Contains(got, "origin") || !strings.Contains(got, "remote1") {
 			t.Fatalf("expected available remotes line, got:\n%s", got)
 		}
 	}
@@ -1066,15 +1097,15 @@ func TestResolveRemotePromptingAndErrors(t *testing.T) {
 	// Add multiple remotes but do not set an upstream; this forces the prompt
 	// path in resolveRemote (no deterministic suggestion).
 	gitCmd(t, repo, "remote", "add", "origin", repo)
-	gitCmd(t, repo, "remote", "add", "jj", repo)
+	gitCmd(t, repo, "remote", "add", "remote1", repo)
 
 	{
-		remote, err := resolveRemote(ctx, cmdStart, options{remote: "jj"}, io.Discard)
+		remote, err := resolveRemote(ctx, cmdStart, options{remote: "remote1"}, io.Discard)
 		if err != nil {
-			t.Fatalf("resolveRemote(--remote jj) err=%v", err)
+			t.Fatalf("resolveRemote(--remote remote1) err=%v", err)
 		}
-		if remote != "jj" {
-			t.Fatalf("resolveRemote(--remote jj)=%q, want %q", remote, "jj")
+		if remote != "remote1" {
+			t.Fatalf("resolveRemote(--remote remote1)=%q, want %q", remote, "remote1")
 		}
 	}
 
@@ -1528,7 +1559,7 @@ func TestSmartPushErrors(t *testing.T) {
 
 	gitCmd(t, repo, "checkout", "main")
 	gitCmd(t, repo, "remote", "add", "origin", repo)
-	gitCmd(t, repo, "remote", "add", "jj", repo)
+	gitCmd(t, repo, "remote", "add", "remote1", repo)
 	{
 		err := smartPush(ctx)
 		if err == nil || !strings.Contains(err.Error(), "multiple remotes") {
@@ -1549,15 +1580,7 @@ func TestSmartPushPermissionDeniedGuidance(t *testing.T) {
 
 	// Use a rejecting pre-receive hook to deterministically simulate a remote
 	// that the current user cannot push to.
-	hookPath := filepath.Join(origin, "hooks", "pre-receive")
-	hookScript := `#!/usr/bin/env bash
-set -euo pipefail
-echo "remote: write access to repository not granted" >&2
-exit 1
-`
-	if err := os.WriteFile(hookPath, []byte(hookScript), 0o755); err != nil {
-		t.Fatalf("write pre-receive hook: %v", err)
-	}
+	installRejectPushHook(t, origin)
 
 	writeFile(t, repo, "denied.txt", "push denied\n")
 	gitCmd(t, repo, "add", "denied.txt")
@@ -1588,6 +1611,86 @@ exit 1
 	}
 	if !strings.Contains(got, "write access to repository not granted") {
 		t.Fatalf("expected exact stderr details, got: %v", err)
+	}
+}
+
+// TestSmartPushPermissionDeniedGuidanceSuggestsInferredForkRemote verifies we
+// suggest a concrete fork remote when one likely personal remote is inferable.
+func TestSmartPushPermissionDeniedGuidanceSuggestsInferredForkRemote(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	fork := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	gitSwitchCreate(t, repo, "alice/feature-x", "main")
+	gitCmd(t, repo, "push", "-u", "origin", "alice/feature-x")
+
+	// Real users typically name their fork remote after their username; keep the
+	// test realistic by following that convention.
+	gitCmd(t, repo, "remote", "add", "alice", fork)
+	installRejectPushHook(t, origin)
+
+	writeFile(t, repo, "denied-inferred.txt", "push denied inferred\n")
+	gitCmd(t, repo, "add", "denied-inferred.txt")
+	gitCmd(t, repo, "commit", "-m", "trigger denied push inferred")
+
+	err := smartPush(context.Background())
+	if err == nil {
+		t.Fatalf("expected smartPush to fail with permission guidance")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "Push target that failed: origin") {
+		t.Fatalf("expected failed-target line, got:\n%s", got)
+	}
+	if !strings.Contains(got, `inferred likely personal remote "alice"`) {
+		t.Fatalf("expected inferred personal remote, got:\n%s", got)
+	}
+	if !strings.Contains(got, "git push -u alice alice/feature-x") {
+		t.Fatalf("expected concrete inferred push command, got:\n%s", got)
+	}
+}
+
+// TestSmartPushPermissionDeniedGuidanceReportsAmbiguousForkRemotes verifies we
+// avoid guessing when multiple remotes look like plausible personal forks.
+func TestSmartPushPermissionDeniedGuidanceReportsAmbiguousForkRemotes(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+
+	gitSwitchCreate(t, repo, "alice/feature-x", "main")
+	gitCmd(t, repo, "push", "-u", "origin", "alice/feature-x")
+
+	// Make two remotes whose URLs both include "/alice/" so URL-based ownership
+	// heuristics cannot distinguish between them.
+	fork1 := initBareRemoteAt(t, filepath.Join(t.TempDir(), "alice", "fork1.git"))
+	fork2 := initBareRemoteAt(t, filepath.Join(t.TempDir(), "alice", "fork2.git"))
+	gitCmd(t, repo, "remote", "add", "fork1", fork1)
+	gitCmd(t, repo, "remote", "add", "fork2", fork2)
+	installRejectPushHook(t, origin)
+
+	writeFile(t, repo, "denied-ambiguous.txt", "push denied ambiguous\n")
+	gitCmd(t, repo, "add", "denied-ambiguous.txt")
+	gitCmd(t, repo, "commit", "-m", "trigger denied push ambiguous")
+
+	err := smartPush(context.Background())
+	if err == nil {
+		t.Fatalf("expected smartPush to fail with permission guidance")
+	}
+	got := err.Error()
+	if !strings.Contains(got, "found multiple likely personal remotes: fork1, fork2") {
+		t.Fatalf("expected ambiguous remote list, got:\n%s", got)
+	}
+	if !strings.Contains(got, "git push -u fork1 alice/feature-x") {
+		t.Fatalf("expected candidate command for fork1, got:\n%s", got)
+	}
+	if !strings.Contains(got, "git push -u fork2 alice/feature-x") {
+		t.Fatalf("expected candidate command for fork2, got:\n%s", got)
 	}
 }
 
@@ -1637,9 +1740,9 @@ func TestFetchSuggestedRemoteSelection(t *testing.T) {
 		t.Fatalf("fetchSuggestedRemote (sole remote) err=%v", err)
 	}
 
-	jj := initBareRemote(t)
-	gitCmd(t, repo, "remote", "add", "jj", jj)
-	if err := fetchSuggestedRemote(ctx, "jj/bob/feature-x"); err != nil {
+	remote1 := initBareRemote(t)
+	gitCmd(t, repo, "remote", "add", "remote1", remote1)
+	if err := fetchSuggestedRemote(ctx, "remote1/bob/feature-x"); err != nil {
 		t.Fatalf("fetchSuggestedRemote (remote prefix) err=%v", err)
 	}
 
@@ -1730,20 +1833,20 @@ func TestResolveMergeTargetRemoteCandidates(t *testing.T) {
 		}
 	}
 
-	jj := initBareRemote(t)
-	gitCmd(t, seed, "remote", "add", "jj", jj)
-	gitCmd(t, seed, "push", "-u", "jj", "main")
-	gitCmd(t, seed, "push", "-u", "jj", "bob/feature-x")
+	remote1 := initBareRemote(t)
+	gitCmd(t, seed, "remote", "add", "remote1", remote1)
+	gitCmd(t, seed, "push", "-u", "remote1", "main")
+	gitCmd(t, seed, "push", "-u", "remote1", "bob/feature-x")
 
-	gitCmd(t, alice, "remote", "add", "jj", jj)
-	gitCmd(t, alice, "fetch", "jj")
+	gitCmd(t, alice, "remote", "add", "remote1", remote1)
+	gitCmd(t, alice, "fetch", "remote1")
 
 	{
 		_, _, err := resolveMergeTarget(ctx, "bob/feature-x")
 		if err == nil || !strings.Contains(err.Error(), "ambiguous") {
 			t.Fatalf("expected ambiguous error, got: %v", err)
 		}
-		if !strings.Contains(err.Error(), "origin/bob/feature-x") || !strings.Contains(err.Error(), "jj/bob/feature-x") {
+		if !strings.Contains(err.Error(), "origin/bob/feature-x") || !strings.Contains(err.Error(), "remote1/bob/feature-x") {
 			t.Fatalf("expected ambiguous error to include both candidates, got: %v", err)
 		}
 	}
@@ -2018,5 +2121,43 @@ func TestSmartPushSuccessPaths(t *testing.T) {
 	gitCmd(t, repo, "config", "--local", "--unset-all", "branch.main.pushRemote")
 	if err := smartPush(ctx); err != nil {
 		t.Fatalf("smartPush (sole remote) err=%v", err)
+	}
+}
+
+// TestPushTargetRemotePrefersBranchPushRemote verifies guidance attribution
+// follows branch.pushRemote before upstream when plain `git push` is used.
+func TestPushTargetRemotePrefersBranchPushRemote(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	fork := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "remote", "add", "alice", fork)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+	gitCmd(t, repo, "config", "--local", "branch.main.pushRemote", "alice")
+
+	got := pushTargetRemote(context.Background(), []string{"push"})
+	if got != "alice" {
+		t.Fatalf("pushTargetRemote()=%q, want %q", got, "alice")
+	}
+}
+
+// TestPushTargetRemotePrefersRemotePushDefault verifies guidance attribution
+// follows remote.pushDefault before upstream when branch.pushRemote is unset.
+func TestPushTargetRemotePrefersRemotePushDefault(t *testing.T) {
+	repo := initRepo(t)
+	origin := initBareRemote(t)
+	fork := initBareRemote(t)
+	withCwd(t, repo)
+
+	gitCmd(t, repo, "remote", "add", "origin", origin)
+	gitCmd(t, repo, "remote", "add", "alice", fork)
+	gitCmd(t, repo, "push", "-u", "origin", "main")
+	gitCmd(t, repo, "config", "--local", "remote.pushDefault", "alice")
+
+	got := pushTargetRemote(context.Background(), []string{"push"})
+	if got != "alice" {
+		t.Fatalf("pushTargetRemote()=%q, want %q", got, "alice")
 	}
 }

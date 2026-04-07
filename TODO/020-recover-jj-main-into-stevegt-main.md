@@ -47,6 +47,14 @@ Affects: `TODO/020-recover-jj-main-into-stevegt-main.md`,
 `TODO/021-branch-setup-bakeoff.md`, `TODO/012-llm-assisted-review-and-approval.md`.
 Supersedes: DI-020-20260326-205942
 
+ID: DI-020-20260406-193000
+Date: 2026-04-06 19:30:00
+Status: active
+Decision: Begin reconciliation by porting the staged stash slice for `main.go`, `main_integration_test.go`, `scripts/mc-test`, and `usage.tmpl` onto `recover/stevegt-main-reconcile` while keeping `stash@{0}` untouched.
+Intent: Recover high-impact push-guidance and system-test changes without disturbing `jj/main`, then continue with incremental DI-reviewed slices.
+Constraints: Treat stash as read-only source; do not drop/apply stash; keep reconciliation branch isolated from `stevegt/main` until validated.
+Affects: `main.go`, `main_integration_test.go`, `scripts/mc-test`, `usage.tmpl`, `TODO/020-recover-jj-main-into-stevegt-main.md`
+
 - [ ] 020.1 Capture immutable recovery artifacts
   - [x] 020.1.1 Verify branch and stash baseline:
     - `git rev-parse --abbrev-ref HEAD`
@@ -84,7 +92,7 @@ Supersedes: DI-020-20260326-205942
   - [ ] 020.3.3 Lock runtime path decisions for test/harness touches.
 
 - [ ] 020.4 Reconcile source deltas onto `recover/stevegt-main-reconcile`
-  - [ ] 020.4.1 Use `recover/jj-main-wip` and `stash@{0}` as read-only sources.
+  - [x] 020.4.1 Use `recover/jj-main-wip` and `stash@{0}` as read-only sources.
   - [ ] 020.4.2 Port only DI-approved chunks; do not batch-apply everything.
   - [ ] 020.4.3 Keep behavior comments and add `Intent` + `Source: DI-...`
         markers for non-trivial behavior changes.

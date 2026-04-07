@@ -46,7 +46,32 @@ Affects: `main.go` push ownership guard + permission guidance flow,
 `main_integration_test.go`, `scripts/mc-test`, TODO 018/021 tracking.
 Supersedes: DI-018-20260312-185440
 
-- [ ] 018.1 Prevent branch creation from detached HEAD
+ID: DI-018-20260313-160356
+Date: 2026-03-13 16:03:56
+Status: active
+Decision: On push-denied/auth-denied errors, infer likely personal fork remotes from configured remotes (name + URL heuristics), suggest exactly one when unambiguous, and report ambiguity otherwise.
+Intent: Reduce user friction after wrong-remote pushes by giving concrete `git push -u` guidance without guessing in ambiguous multi-remote setups.
+Constraints: Trigger only on push permission/auth failures, infer from local configured remotes only, and preserve exact git stderr output in guidance.
+Affects: `main.go` (`pushTargetRemote`, `inferForkRemoteSuggestion`, `pushPermissionGuidanceError`), `main_integration_test.go` (inferred + ambiguous guidance tests), `scripts/mc-test` (wrong-remote-push scenario), `usage.tmpl` (push model guidance), TODO 018 tracking.
+Supersedes: DI-018-20260312-185440
+
+ID: DI-018-20260313-174958
+Date: 2026-03-13 17:49:58
+Status: active
+Decision: Keep `mc-test` wrong-remote simulation isolated by restoring any pre-existing `origin` pre-receive hook after the scenario finishes.
+Intent: Prevent cross-scenario contamination so `mc-test run --scenario all` remains deterministic and later push scenarios are unaffected.
+Constraints: Preserve existing hook content when present, remove temporary denial hook when none existed, and avoid changing product runtime behavior.
+Affects: `scripts/mc-test` (`scenario_wrong_remote_push` hook backup/restore flow), TODO 018 decision log.
+
+ID: DI-018-20260406-194500
+Date: 2026-04-06 19:45:00
+Status: active
+Decision: Fix push-target attribution to honor `branch.<name>.pushRemote` and `remote.pushDefault` before upstream when plain `git push` fails.
+Intent: Ensure permission guidance reports the actual remote Git attempted, especially in fork workflows with explicit push defaults.
+Constraints: Preserve existing smartPush behavior and failure guidance shape while only improving remote attribution accuracy.
+Affects: `main.go` (`pushTargetRemote`), `main_integration_test.go` (push-target precedence coverage), TODO 018 decision log.
+
+- [x] 018.1 Prevent branch creation from detached HEAD
   - [x] 018.1.1 In `branch create`, detect `HEAD` base when current branch is
         detached; abort with a friendly message and instructions to switch to a
         real branch or pass `--from <ref>` explicitly.
@@ -54,7 +79,7 @@ Supersedes: DI-018-20260312-185440
         Note: Added `mc-test` scenario `detached-branch` to cover rejection,
         idempotent existing-branch switch, and explicit `--from` recovery.
 
-- [ ] 018.2 Detect push permission errors on cloned upstream
+- [x] 018.2 Detect push permission errors on cloned upstream
   - [x] 018.2.1 When `git push` fails with permission/denied, detect the common
         case of pushing to someone else’s repo (no write access).
   - [x] 018.2.2 Present a guided fix: add user’s own remote, set upstream via
@@ -62,11 +87,12 @@ Supersedes: DI-018-20260312-185440
   - [x] 018.2.3 Add tests simulating no-push permission (e.g., remote rejecting
         pushes) to ensure the guidance appears and the exit code is non-zero.
 
-- [ ] 018.3 Detect “cloned upstream then forked” pushing to wrong remote
-  - [ ] 018.3.1 Heuristic: origin URL differs from user’s fork URL (from
-        registry or config), and push failures/remote HEAD owner mismatch.
-  - [ ] 018.3.2 Guide user to add their fork remote (e.g., `git remote add <user> <url>`)
-        and set upstream with `git push -u <user> <branch>`.
-  - [ ] 018.3.3 Add docs + usage text to clarify the flow for forked setups.
-  - [ ] 018.3.4 Add tests (mc-test scenario) that clones upstream, then sets a
-        fork remote and verifies the guidance chooses the fork for pushes.
+- [x] 018.3 Detect “cloned upstream then forked” pushing to wrong remote
+  - [x] 018.3.1 Heuristic: infer likely fork remote candidates from configured
+        remotes using derived user + branch-prefix + URL ownership signals.
+  - [x] 018.3.2 Guide user to add their fork remote (e.g., `git remote add <user> <url>`)
+        and set upstream with `git push -u <user> <branch>`; choose one remote
+        only when unambiguous, otherwise report explicit candidate commands.
+  - [x] 018.3.3 Add docs + usage text to clarify the flow for forked setups.
+  - [x] 018.3.4 Add tests (Go integration + mc-test scenario) that exercise
+        inferred-fork and ambiguous-fork guidance paths.
