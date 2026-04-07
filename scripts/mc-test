@@ -756,6 +756,19 @@ scenario_wrong_remote_push() {
   local origin_hook_backup="$root/.mc-test-pre-receive.backup"
   local had_origin_hook="0"
 
+  restore_origin_hook() {
+    if [[ "$had_origin_hook" == "1" ]]; then
+      run mv "$origin_hook_backup" "$origin_hook"
+    else
+      run rm -f "$origin_hook"
+    fi
+  }
+
+  # Intent: Always restore hook state even when assertions fail so one failing
+  # scenario cannot poison later scenarios in `mc-test run --scenario all`.
+  # Source: DI-018-20260406-201500
+  trap restore_origin_hook RETURN
+
   echo "$prog: wrong-remote-push (denied shared-remote push + inferred fork guidance)" >&2
 
   # Ensure the leader branch is tracking origin so merge auto-push targets the
@@ -778,15 +791,6 @@ scenario_wrong_remote_push() {
     had_origin_hook="1"
   fi
 
-  # Deterministically reject pushes to origin.
-  cat >"$origin_hook" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-echo "remote: write access to repository not granted" >&2
-exit 1
-EOF
-  run chmod +x "$origin_hook"
-
   # Peer contributes a change on their personal branch and pushes it.
   run git -C "$other_repo" switch "$other/$twig"
   mkdir -p "$other_repo/wrong-remote"
@@ -794,6 +798,16 @@ EOF
   run git -C "$other_repo" add "wrong-remote/$other.txt"
   run git -C "$other_repo" commit -m "Wrong-remote scenario ($other)"
   run git -C "$other_repo" push
+
+  # Install rejection only after peer push, so this scenario fails exactly at
+  # the leader's wrong-remote push path instead of earlier setup pushes.
+  cat >"$origin_hook" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "remote: write access to repository not granted" >&2
+exit 1
+EOF
+  run chmod +x "$origin_hook"
 
   run git -C "$leader_repo" switch "$leader/$twig"
   local out
@@ -806,14 +820,8 @@ EOF
   assert_contains "$out" "Git stderr (exact):"
   assert_contains "$out" "write access to repository not granted"
 
-  # Intent: Keep scenario side effects local by restoring origin hook state so
-  # later scenarios (for example converge) are not affected by this denial
-  # simulation. Source: DI-018-20260313-174958
-  if [[ "$had_origin_hook" == "1" ]]; then
-    run mv "$origin_hook_backup" "$origin_hook"
-  else
-    run rm -f "$origin_hook"
-  fi
+  trap - RETURN
+  restore_origin_hook
 }
 
 scenario_multiremote_fetch() {

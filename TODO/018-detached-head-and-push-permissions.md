@@ -71,6 +71,14 @@ Intent: Ensure permission guidance reports the actual remote Git attempted, espe
 Constraints: Preserve existing smartPush behavior and failure guidance shape while only improving remote attribution accuracy.
 Affects: `main.go` (`pushTargetRemote`), `main_integration_test.go` (push-target precedence coverage), TODO 018 decision log.
 
+ID: DI-018-20260406-201500
+Date: 2026-04-06 20:15:00
+Status: active
+Decision: In `mc-test` wrong-remote scenario, install the rejecting origin hook only after peer setup pushes complete, and always restore hook state via cleanup trap.
+Intent: Ensure the scenario fails at the intended leader wrong-remote push point and prevent cross-scenario contamination when assertions fail early.
+Constraints: Keep the denial signal deterministic (`write access to repository not granted`) and preserve existing scenario semantics.
+Affects: `scripts/mc-test` (`scenario_wrong_remote_push` hook install ordering + trap-based cleanup), TODO 018 decision log.
+
 - [x] 018.1 Prevent branch creation from detached HEAD
   - [x] 018.1.1 In `branch create`, detect `HEAD` base when current branch is
         detached; abort with a friendly message and instructions to switch to a
