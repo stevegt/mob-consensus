@@ -5,6 +5,7 @@ This list is sorted by priority (not number). TODO numbers are stable; do not re
 - [ ] 013 - TUI automation and scraping (`TODO/013-tui-automation-and-scraping.md`)
 - [ ] 014 - Consider Bubble Tea TUI for mob-consensus (`TODO/014-bubbletea-tui.md`)
 - [ ] 015 - Cleaner interfaces for CLI, TUI, and Go API (`TODO/015-cli-tui-api-interfaces.md`)
+- [ ] 024 - Shared cross-machine session fabric bakeoff (Git vs PromiseGrid) (`TODO/024-shared-session-transport-bakeoff.md`)
 - [x] 023 - Define mob-consensus philosophy (including DF/DI/DR) (`TODO/023-mob-consensus-philosophy.md`)
 - [ ] 022 - Evaluate `git consensus` subcommand architecture (`TODO/022-git-consensus-subcommand.md`)
 - [ ] 021 - Branch setup stabilization checkpoint (no peer pushes + peer hygiene warnings) (`TODO/021-branch-setup-bakeoff.md`)
